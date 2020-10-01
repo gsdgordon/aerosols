@@ -10,7 +10,7 @@ clear variables;
 close all;
 
 % Load data
-T = readtable('20200915_aerotrak.xlsx');
+T = readtable('20200930_aerotrak.xlsx');
 
 opTime = T.DateAndTime;
 location = T.Location;
@@ -19,19 +19,19 @@ avSampleTime = mode(sampleTime); % assumes sample time is not changed during ope
 
 
 % Sync times from different clocks as per the video
-obsCamTime_endo = datetime(2020,9,15,14,25,59);
-endoscopeTime = datetime(2020,9,15,14,41,08);
+obsCamTime_endo = datetime(2020,9,30,11,09,55);
+endoscopeTime = datetime(2020,9,30,11,24,20);
 
-obsCamTime_aerotrak = datetime(2020,9,15,14,26,10);
-aerotrakTime = datetime(2020,9,15,14,37,28) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
+obsCamTime_aerotrak = datetime(2020,9,30,11,10,01);
+aerotrakTime = datetime(2020,9,30,11,22,33) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
 
 aeroOffsetTime = aerotrakTime - obsCamTime_aerotrak;
 endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
 opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(2020,9,15,14,25,18);
-endTime = datetime(2020,9,15,16,26,35);
+startTime = datetime(2020,9,30,11,20,00);
+endTime = datetime(2020,9,30,12,50,00);
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
@@ -41,6 +41,11 @@ T = T(1:end-1,:); % remove last count as it is likely partial
 
 opTime2 = T.DateAndTime - aeroOffsetTime;
 airVol = T.Volume_L_;
+
+% Get a background reading
+bgStartTime = datetime(2020,9,30,11,21,00);
+bgEndTime = datetime(2020,9,30,11,25,00);
+bgValid = isbetween(opTime2,bgStartTime,bgEndTime);
 
 % Now get the particle 'diameters' representing the edges of the counting
 % bins
@@ -58,12 +63,53 @@ data = data./repmat(airVol,1,size(data,2)) * 1000; %Because volume is liters so 
 vols = 4/3*pi*(diameters_av/2).^3 * (1e-6)^3;
 
 bin_sizes = diameters(2:7) - diameters(1:6);
+log_bin_sizes = log(diameters(2:7)) - log(diameters(1:6));
 
 data_v = data .* repmat(vols,size(data,1),1);
 
 % Densities so that a probability density approach can be used
 data_v_density = data_v ./ repmat(bin_sizes,size(data,1),1);
 data_density = data ./ repmat(bin_sizes,size(data,1),1);
+
+% Get a background reading
+bgStartTime = datetime(2020,9,30,11,21,00);
+bgEndTime = datetime(2020,9,30,11,23,00);
+bgValid = isbetween(opTime2,bgStartTime,bgEndTime);
+bg_density = data_density(bgValid,:);
+
+
+%Try to fit lognormal distribution to BG
+initPop = [];
+for k=1:size(bg_density,1)
+    
+    densities = bg_density(k,:);
+    
+    if any(isnan(densities))
+        A_bg(k) = NaN;
+        mu_bg(k) = NaN;
+        sigma_bg(k) = NaN;
+    else
+        if k>1
+            initPop = [mu_bg(1:k-1)',sigma_bg(1:k-1)']; % Avoid nans!
+            validRows = ~isnan(initPop(:,1)) & ~isnan(initPop(:,2));
+            initPop = initPop(validRows,:);
+        end
+        
+        [A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
+        
+        A_bg(k) = A_t;
+        mu_bg(k) = mu_t;
+        sigma_bg(k) = sigma_t;
+        
+
+    
+        if mod(k,10) == 0
+            disp(['Done ', num2str(k), '/', num2str(size(data,1))]);
+        end
+
+    end
+
+end
 
 initPop = [];
 
@@ -84,8 +130,8 @@ for k=1:size(data,1)
             initPop = initPop(validRows,:);
         end
         
-        %[A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
-        [A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities_v,'fitType','volume','initPop',initPop);
+        [A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
+        %[A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities_v,'fitType','volume','initPop',initPop);
         
         A(k) = A_t;
         mu(k) = mu_t;

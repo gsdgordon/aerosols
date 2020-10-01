@@ -23,6 +23,8 @@ function [A, mu, sigma] = fitAerosolDist(diameters, densities, varargin)
     radii = diameters/2;
     diameters_av = (diameters(1:6)+diameters(2:7))/2; % Mean diameter in each bin
     binSizes = (diameters(2:end) - diameters(1:end-1));
+    counts = densities .* repmat(binSizes,size(densities,1),1); % Since we are integrating the PDF can just use counts directly
+    vols = 4/3*pi*(diameters_av/2).^3 * (1e-6)^3;
 
 
     % set up a function to numerically integrate over the bin size range
@@ -36,15 +38,13 @@ function [A, mu, sigma] = fitAerosolDist(diameters, densities, varargin)
     
     prior = @(x) 1; % Uninformative prior
     
-    objFun = @(x) -1*(densities(1)*log(intFun([radii(1),radii(2),x(1),x(2)]))...
-                    + densities(2)*log(intFun([radii(2),radii(3),x(1),x(2)]))...
-                    + densities(3)*log(intFun([radii(3),radii(4),x(1),x(2)]))...
-                    + densities(4)*log(intFun([radii(4),radii(5),x(1),x(2)]))...
-                    + densities(5)*log(intFun([radii(5),radii(6),x(1),x(2)]))...
-                    + densities(6)*log(intFun([radii(6),radii(7),x(1),x(2)]))...
+    objFun = @(x) -1*(counts(1)*log(intFun([radii(1),radii(2),x(1),x(2)]))...
+                    + counts(2)*log(intFun([radii(2),radii(3),x(1),x(2)]))...
+                    + counts(3)*log(intFun([radii(3),radii(4),x(1),x(2)]))...
+                    + counts(4)*log(intFun([radii(4),radii(5),x(1),x(2)]))...
+                    + counts(5)*log(intFun([radii(5),radii(6),x(1),x(2)]))...
+                    + counts(6)*log(intFun([radii(6),radii(7),x(1),x(2)]))...
                     + log(prior(x)));
-                
-
 
     % First run a genetic search to avoid local minima        
     options_ga = optimoptions('ga', 'TolFun',1e-14, 'InitialPopulationMatrix',initPop_r, 'MaxGenerations',1000, 'PopulationSize', popSize, 'Display', 'off');
@@ -57,7 +57,7 @@ function [A, mu, sigma] = fitAerosolDist(diameters, densities, varargin)
     
    
     % Convert back to diameters
-    A = sum(densities .* binSizes);
+    A = sum(counts);
     mu_r = bestVal(1);
     mu = log(exp(mu_r)*2);
     sigma_r = bestVal(2);
@@ -66,11 +66,16 @@ function [A, mu, sigma] = fitAerosolDist(diameters, densities, varargin)
     normConst = logncdf(diameters(7),mu,sigma) - logncdf(diameters(1),mu,sigma);
 
     plotFit = true;
+    
+    plotDiams = exp(linspace(-2,3,100));
+    plotDiams_av = 0.5*(plotDiams(1:end-1) + plotDiams(2:end));
+    plotBinSizes = (plotDiams(2:end) - plotDiams(1:end-1));
   
     if plotFit
         plot(log(diameters_av),densities/A*normConst);
         hold on;
-        plot(log(diameters_av),(logncdf(diameters(2:7),mu,sigma) - logncdf(diameters(1:6),mu,sigma))./binSizes,'r-');
+        %plot(log(diameters_av),(logncdf(diameters(2:7),mu,sigma) - logncdf(diameters(1:6),mu,sigma))./binSizes,'r-');
+        plot(log(plotDiams_av),(logncdf(plotDiams(2:end),mu,sigma) - logncdf(plotDiams(1:end-1),mu,sigma))./plotBinSizes,'r-');
         hold off;
         pause(0.01)
     end
