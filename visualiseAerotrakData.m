@@ -68,8 +68,11 @@ log_bin_sizes = log(diameters(2:7)) - log(diameters(1:6));
 data_v = data .* repmat(vols,size(data,1),1);
 
 % Densities so that a probability density approach can be used
-data_v_density = data_v ./ repmat(bin_sizes,size(data,1),1);
-data_density = data ./ repmat(bin_sizes,size(data,1),1);
+data_v_density = data_v ./ repmat(log_bin_sizes,size(data,1),1); %Try using log binsizes
+data_density = data ./ repmat(log_bin_sizes,size(data,1),1);
+%data_v_density = data_v ./ repmat(bin_sizes,size(data,1),1); %Try using linear binsizes
+%data_density = data ./ repmat(bin_sizes,size(data,1),1);
+
 
 % Get a background reading
 bgStartTime = datetime(2020,9,30,11,21,00);
@@ -95,11 +98,12 @@ for k=1:size(bg_density,1)
             initPop = initPop(validRows,:);
         end
         
-        [A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
+        [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
         
         A_bg(k) = A_t;
         mu_bg(k) = mu_t;
         sigma_bg(k) = sigma_t;
+        likelihood(k) = l_t;
         
 
     
