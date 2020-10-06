@@ -105,8 +105,6 @@ for k=1:size(bg_density,1)
         sigma_bg(k) = sigma_t;
         likelihood(k) = l_t;
         
-
-    
         if mod(k,10) == 0
             disp(['Done ', num2str(k), '/', num2str(size(data,1))]);
         end
@@ -115,10 +113,32 @@ for k=1:size(bg_density,1)
 
 end
 
+figure;
+subplot(4,1,1);
+plot(A_bg);
+title('Aerosol number');
+
+subplot(4,1,2);
+plot(mu_bg);
+title('mu')
+
+subplot(4,1,3);
+plot(sigma_bg);
+title('sigma')
+
+subplot(4,1,4);
+plot(likelihood);
+title('log likelihood');
+
+mean_mu = median(mu_bg); % Do unbiased estimate!
+mean_sig = median(sigma_bg);
+
 initPop = [];
 
+figure;
 %Try to fit lognormal distribution
-for k=1:size(data,1)
+startK = 1;%285
+for k=startK:size(data,1)
     
     densities = data_density(k,:);
     densities_v = data_v_density(k,:);
@@ -128,19 +148,19 @@ for k=1:size(data,1)
         mu(k) = NaN;
         sigma(k) = NaN;
     else
-        if k>1
+        if k>startK
             initPop = [mu(1:k-1)',sigma(1:k-1)']; % Avoid nans!
             validRows = ~isnan(initPop(:,1)) & ~isnan(initPop(:,2));
             initPop = initPop(validRows,:);
         end
         
-        [A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
+        [A_t, mu_t, sigma_t, likelihood, w_t] = fitAerosolDist(diameters, densities,'fitType','counts','bimodal',true,'bg_mu',mean_mu, 'bg_sig', mean_sig);
         %[A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities_v,'fitType','volume','initPop',initPop);
         
         A(k) = A_t;
         mu(k) = mu_t;
         sigma(k) = sigma_t;
-        
+        w(k) = w_t;
 
     
         if mod(k,10) == 0
@@ -151,17 +171,21 @@ for k=1:size(data,1)
 
 end
 
-subplot(3,1,1)
+subplot(4,1,1)
 plot(opTime2, A);
 title('Relative aerosol volume');
 
-subplot(3,1,2);
+subplot(4,1,2);
 plot(opTime2, exp(mu));
 title('\mu (mean aerosol diameter in microns)');
 
-subplot(3,1,3);
+subplot(4,1,3);
 plot(opTime2, sigma);
 title('\sigma (standard devation of particle diameters in microns)');
+
+subplot(4,1,4);
+plot(opTime2, (w));
+title('log(w) (degree of bimodality)');
 
 
 data_tot = sum(data_v,2);
@@ -218,7 +242,7 @@ end
 
 
 % Make a video suitable for overlaying on clinical videos
-makeVideo = true;
+makeVideo = false;
 
 if makeVideo
     fps = 30;
