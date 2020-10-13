@@ -10,7 +10,13 @@ clear variables;
 close all;
 
 % Load data
-T = readtable('20200930_aerotrak.xlsx');
+Y = 2020;
+M = 9;
+D = 30;
+
+datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
+
+T = readtable([datestring,'_aerotrak.xlsx']);
 
 opTime = T.DateAndTime;
 location = T.Location;
@@ -19,19 +25,19 @@ avSampleTime = mode(sampleTime); % assumes sample time is not changed during ope
 
 
 % Sync times from different clocks as per the video
-obsCamTime_endo = datetime(2020,9,30,11,09,55);
-endoscopeTime = datetime(2020,9,30,11,24,20);
+obsCamTime_endo = datetime(Y,M,D,11,09,55);
+endoscopeTime = datetime(Y,M,D,11,24,20);
 
-obsCamTime_aerotrak = datetime(2020,9,30,11,10,01);
-aerotrakTime = datetime(2020,9,30,11,22,33) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
+obsCamTime_aerotrak = datetime(Y,M,D,11,10,01);
+aerotrakTime = datetime(Y,M,D,11,22,33) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
 
 aeroOffsetTime = aerotrakTime - obsCamTime_aerotrak;
 endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
 opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(2020,9,30,11,20,00);
-endTime = datetime(2020,9,30,12,50,00);
+startTime = datetime(Y,M,D,11,20,00);
+endTime = datetime(Y,M,D,12,50,00);
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
@@ -41,11 +47,6 @@ T = T(1:end-1,:); % remove last count as it is likely partial
 
 opTime2 = T.DateAndTime - aeroOffsetTime;
 airVol = T.Volume_L_;
-
-% Get a background reading
-bgStartTime = datetime(2020,9,30,11,21,00);
-bgEndTime = datetime(2020,9,30,11,25,00);
-bgValid = isbetween(opTime2,bgStartTime,bgEndTime);
 
 % Now get the particle 'diameters' representing the edges of the counting
 % bins
@@ -73,19 +74,101 @@ data_density = data ./ repmat(log_bin_sizes,size(data,1),1);
 %data_v_density = data_v ./ repmat(bin_sizes,size(data,1),1); %Try using linear binsizes
 %data_density = data ./ repmat(bin_sizes,size(data,1),1);
 
+nSizes = size(data,2);
+tColor = lines(nSizes);
 
 % Get a background reading
-bgStartTime = datetime(2020,9,30,11,21,00);
-bgEndTime = datetime(2020,9,30,11,23,00);
+%bgStartTime = datetime(2020,9,30,11,21,00);
+%bgEndTime = datetime(2020,9,30,11,23,00);
+bgStartTime = startTime;
+bgEndTime = endTime;
 bgValid = isbetween(opTime2,bgStartTime,bgEndTime);
-bg_density = data_density(bgValid,:);
+bg_density_raw = data_density(bgValid,:);
 
 
+for k=1:nSizes
+  
+    currentBG = bg_density_raw(:,k);
+    
+    padSize = 100;
+    currentBG = padarray(currentBG,padSize,'replicate');
+    currentBG = medfilt1(currentBG,15);
+    
+    sampleFreq = 1/avSampleTime; % in Hz
+    cutoffFreq = 0.01; %in Hz
+    
+
+    currentBG = lowpass(currentBG,cutoffFreq,sampleFreq, 'ImpulseResponse','fir');
+    
+    
+    currentBG = currentBG(padSize+1:end-padSize);
+    bg_density_filt(:,k) = currentBG;
+end
+
+fg_density = bg_density_raw - bg_density_filt;
+fg_density(fg_density < 0) = 0; % Can't have negative signal
+
+% Plot smoothed
+figure;
+for k=1:nSizes
+    
+    subplot(nSizes,1,k);
+    plot(opTime2,bg_density_raw(:,k),'Color',tColor(k,:));
+    hold on;
+    plot(opTime2,bg_density_filt(:,k),'Color','black','LineStyle',':', 'LineWidth',2);
+
+    title(['Diameter: ', num2str(diameters(k)), '\mum']);
+    ylabel('#/m^3');
+    xlabel('time')
+
+end
+
+centreTime_idx = 76;
+resampleHalfWidthTime = 180;
+startTime_idx = ceil(centreTime_idx - resampleHalfWidthTime/avSampleTime);
+endTime_idx = floor(centreTime_idx + resampleHalfWidthTime/avSampleTime);
+data_samp = data(startTime_idx:endTime_idx,:);
+data_t = ((startTime_idx:1:endTime_idx) - centreTime_idx)*avSampleTime;
+
+
+new_t = -resampleHalfWidthTime:resampleHalfWidthTime;
+new_data = zeros(size(new_t,2), size(data_samp,2));
+
+count = 1;
+for tIdx = 1:size(new_t,2)
+    if count <= size(data_t,2)
+        if data_t(count) == new_t(tIdx)
+            new_data(tIdx,:) = data_samp(count,:);
+        	count = count + 1;
+        else
+            new_data(tIdx,:) = NaN;
+        end
+    else
+        new_data(tIdx,:) = NaN;
+    end
+end
+
+new_data = new_data';
+
+% Plot FG
+figure;
+for k=1:nSizes
+    
+    subplot(nSizes,1,k);
+    plot(opTime2,fg_density(:,k),'Color',tColor(k,:));
+
+    title(['Diameter: ', num2str(diameters(k)), '\mum']);
+    ylabel('#/m^3');
+    xlabel('time')
+
+end
+
+figure;
 %Try to fit lognormal distribution to BG
 initPop = [];
-for k=1:size(bg_density,1)
+for k=1:size(bg_density_filt,1)
     
-    densities = bg_density(k,:);
+    densities = bg_density_filt(k,:);
     
     if any(isnan(densities))
         A_bg(k) = NaN;
@@ -98,12 +181,12 @@ for k=1:size(bg_density,1)
             initPop = initPop(validRows,:);
         end
         
-        [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop);
+        [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop, 'mu_LB', log(0.01), 'mu_UB', log(1), 'sig_LB', 0.01, 'sig_UB', 1.5, 'mu_mu', log(0.2), 'mu_sig',5);
         
         A_bg(k) = A_t;
         mu_bg(k) = mu_t;
         sigma_bg(k) = sigma_t;
-        likelihood(k) = l_t;
+        likelihood_bg(k) = l_t;
         
         if mod(k,10) == 0
             disp(['Done ', num2str(k), '/', num2str(size(data,1))]);
@@ -116,19 +199,19 @@ end
 figure;
 subplot(4,1,1);
 plot(A_bg);
-title('Aerosol number');
+title('BG Aerosol number');
 
 subplot(4,1,2);
 plot(mu_bg);
-title('mu')
+title('BG mu')
 
 subplot(4,1,3);
 plot(sigma_bg);
-title('sigma')
+title('BG sigma')
 
 subplot(4,1,4);
-plot(likelihood);
-title('log likelihood');
+plot(likelihood_bg);
+title('BG log likelihood');
 
 mean_mu = median(mu_bg); % Do unbiased estimate!
 mean_sig = median(sigma_bg);
@@ -137,11 +220,11 @@ initPop = [];
 
 figure;
 %Try to fit lognormal distribution
-startK = 1;%285
+startK = 285;
 for k=startK:size(data,1)
     
-    densities = data_density(k,:);
-    densities_v = data_v_density(k,:);
+    densities = fg_density(k,:);
+    %densities_v = data_v_density(k,:);
     
     if any(isnan(densities))
         A(k) = NaN;
@@ -154,13 +237,13 @@ for k=startK:size(data,1)
             initPop = initPop(validRows,:);
         end
         
-        [A_t, mu_t, sigma_t, likelihood, w_t] = fitAerosolDist(diameters, densities,'fitType','counts','bimodal',true,'bg_mu',mean_mu, 'bg_sig', mean_sig);
-        %[A_t, mu_t, sigma_t] = fitAerosolDist(diameters, densities_v,'fitType','volume','initPop',initPop);
+        [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop, 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.1, 'sig_UB', 50);
+        
         
         A(k) = A_t;
         mu(k) = mu_t;
         sigma(k) = sigma_t;
-        w(k) = w_t;
+        likelihood_fg(k) = l_t;
 
     
         if mod(k,10) == 0
@@ -171,26 +254,30 @@ for k=startK:size(data,1)
 
 end
 
+isValid = A > 4e4;
+
 subplot(4,1,1)
-plot(opTime2, A);
+plot(opTime2, A.*isValid);
 title('Relative aerosol volume');
 
 subplot(4,1,2);
-plot(opTime2, exp(mu));
+plot(opTime2, exp(mu).*isValid);
 title('\mu (mean aerosol diameter in microns)');
 
 subplot(4,1,3);
-plot(opTime2, sigma);
+plot(opTime2, sigma.*isValid);
 title('\sigma (standard devation of particle diameters in microns)');
 
 subplot(4,1,4);
-plot(opTime2, (w));
-title('log(w) (degree of bimodality)');
+plot(opTime2, (likelihood_fg).*isValid);
+title('log likelihood');
+
+
 
 
 data_tot = sum(data_v,2);
 
-nSizes = size(data,2);
+
 tColor = lines(nSizes);
 
 allFig = figure;

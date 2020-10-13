@@ -8,12 +8,33 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     addOptional(p,'bimodal',false);
     addOptional(p,'bg_mu', NaN);
     addOptional(p,'bg_sigma', NaN);
+    addOptional(p,'mu_LB', -10);
+    addOptional(p,'mu_UB', 10);
+    addOptional(p,'sig_LB', 0);
+    addOptional(p,'sig_UB', 10);
+    addOptional(p,'mu_mu', NaN);
+    addOptional(p,'mu_sig', NaN);
+    
     parse(p,varargin{:});
 
     initPop_d = p.Results.initPop;
     isBimodal = p.Results.bimodal;
     bg_mu = p.Results.bg_mu;
     bg_sigma = p.Results.bg_sigma;
+    
+    
+    mu_LB = log(exp(p.Results.mu_LB)/2);
+    mu_UB = log(exp(p.Results.mu_UB)/2);
+    sig_LB = p.Results.sig_LB;
+    sig_UB = p.Results.sig_UB;
+    mu_mu = log(exp(p.Results.mu_mu)/2);
+    mu_sig = p.Results.mu_sig;
+    
+    if isnan(mu_mu) || isnan(mu_sig)
+        useNormPrior = false;
+    else
+        useNormPrior = true;
+    end
     
     if isBimodal
         if isnan(bg_mu)
@@ -57,10 +78,10 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     radii = diameters/2;
     log_radii = log(radii);
     
-    diameters_av = (diameters(1:6)+diameters(2:7))/2; % Mean diameter in each bin
-    log_diameters_av = (log_diameters(1:6)+log_diameters(2:7))/2;
+    diameters_av = (diameters(1:end-1)+diameters(2:end))/2; % Mean diameter in each bin
+    log_diameters_av = (log_diameters(1:end-1)+log_diameters(2:end))/2;
     bin_sizes = (diameters(2:end) - diameters(1:end-1));
-    log_bin_sizes = log(diameters(2:7)) - log(diameters(1:6));
+    log_bin_sizes = log(diameters(2:end)) - log(diameters(1:end-1));
     
     if logDensity
         counts = densities .* repmat(log_bin_sizes,size(densities,1),1);
@@ -94,23 +115,23 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     end
     
     if isBimodal
-        mu_UB = log(50/2); %D = 0.2, sig = 0.6 is a good fit
-        sig_UB = 30;
+        %mu_UB = log(50/2); %D = 0.2, sig = 0.6 is a good fit
+        %sig_UB = 10;
         w_UB = 10;
 
-        mu_LB = log(0.05/2);
-        sig_LB = 0.01;
+        %mu_LB = log(0.05/2);
+        %sig_LB = 0.01;
         w_LB = 0;
         
     else
-        mu_UB = log(1/2); %D = 0.2, sig = 0.6 is a good fit
-        sig_UB = 1.5;
+        %mu_UB = log(1/2); %D = 0.2, sig = 0.6 is a good fit
+        %sig_UB = 1.5;
 
-        mu_LB = log(0.01/2);
-        sig_LB = 0.01;
+        %mu_LB = log(0.01/2);
+        %sig_LB = 0.01;
         
-        mu_mu = log(0.1/2);
-        mu_sig = 1;
+        %mu_mu = log(0.2/2);
+        %mu_sig = 5;
     end
     
     log_prior = @(x) 0; % Uninformative prior
@@ -119,10 +140,11 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     if isBimodal
         log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB)) + log(normpdf(x(3),0,0.1)); % Prior is on the radius...
     else
-        log_prior = @(x) sum(counts)*(log(1/(mu_sig*sqrt(2*pi))) -(x(1) - mu_mu)^2/(2*mu_sig^2)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...
-        
-        
-        %log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...
+        if useNormPrior
+            log_prior = @(x) sum(counts)*(log(1/(mu_sig*sqrt(2*pi))) -(x(1) - mu_mu)^2/(2*mu_sig^2)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...
+        else
+            log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...
+        end
     end
     
    
@@ -211,12 +233,36 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     
     if isBimodal
         w = bestVal(3);
+        %w = 0;
     end
     
     if logDensity
-        normConst = normcdf(log_diameters(7),mu,sigma) - normcdf(log_diameters(1),mu,sigma);
+        if (isBimodal)
+            
+            testRadii = linspace(-20,20,500);
+ 
+            vals = [];
+            for k=1:size(testRadii,2)-1
+                vals(k) = intFun([testRadii(k),testRadii(k+1),mu_r,sigma_r, w]);
+            end
+            
+            totArea = sum(vals);
+            
+            testRadii = linspace(log_radii(1),log_radii(7),500);
+            vals = [];
+            for k=1:size(testRadii,2)-1
+                vals(k) = intFun([testRadii(k),testRadii(k+1),mu_r,sigma_r, w]);
+            end
+
+            testArea = sum(vals);
+            
+            normConst = testArea/totArea;
+            
+        else
+            normConst = normcdf(log_diameters(end),mu,sigma) - normcdf(log_diameters(1),mu,sigma);
+        end
     else
-        normConst = logncdf(diameters(7),mu,sigma) - logncdf(diameters(1),mu,sigma);
+        normConst = logncdf(diameters(end),mu,sigma) - logncdf(diameters(1),mu,sigma);
     end
 
     plotFit = true;
@@ -224,7 +270,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     plotDiams = exp(linspace(-0.5,3,300));
     %plotDiams = diameters;
     log_plotDiams = log(plotDiams);
-    log_plotRadii = log(plotDiams/2)
+    log_plotRadii = log(plotDiams/2);
     plotDiams_av = 0.5*(plotDiams(1:end-1) + plotDiams(2:end));
     log_plotDiams_av = (log_plotDiams(1:end-1)+log_plotDiams(2:end))/2;
     plotBinSizes = (plotDiams(2:end) - plotDiams(1:end-1));
@@ -240,11 +286,11 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
         %plot(log(diameters_av),(logncdf(diameters(2:7),mu,sigma) - logncdf(diameters(1:6),mu,sigma))./binSizes,'r-');
         if logDensity
             if isBimodal
+                vals = [];
                 for k=1:size(plotDiams,2)-1
-                    vals(k) = intFun([log_plotRadii(k),log_plotRadii(k+1),mu_r,sigma_r, w]);
+                    vals(k) = intFun([log_plotRadii(k),log_plotRadii(k+1),mu_r,sigma_r, w])/totArea;
                 end
-                refArea = sum(log_bin_sizes.*(densities/A*normConst));
-                plot(log_plotDiams_av,vals/(sum(vals(1:end).*log_plotBinSizes))*refArea);
+                plot(log_plotDiams_av,vals./log_plotBinSizes, 'r-');
             else
                 plot(log_plotDiams_av,(normcdf(log_plotDiams(2:end),mu,sigma) - normcdf(log_plotDiams(1:end-1),mu,sigma))./log_plotBinSizes,'r-');
             end
@@ -275,12 +321,17 @@ function prob = normApproxMNpdf(x,log_radii, counts, intFun)
     % https://stats.stackexchange.com/questions/34547/what-is-the-normal-approximation-of-the-multinomial-distribution?noredirect=1&lq=1
     % https://stats.stackexchange.com/questions/2397/asymptotic-distribution-of-multinomial
     % http://www.stat.umn.edu/geyer/5102/notes/brand.pdf
-    probs = [intFun([log_radii(1),log_radii(2),x]),...
-             intFun([log_radii(2),log_radii(3),x]),...
-             intFun([log_radii(3),log_radii(4),x]),...
-             intFun([log_radii(4),log_radii(5),x]),...
-             intFun([log_radii(5),log_radii(6),x]),...
-             intFun([log_radii(6),log_radii(7),x])];
+    probs = [];
+    for k=1:size(log_radii,2)-1
+        probs = [probs, intFun([log_radii(k),log_radii(k+1),x])];
+    end
+    
+%     probs = [intFun([log_radii(1),log_radii(2),x]),...
+%              intFun([log_radii(2),log_radii(3),x]),...
+%              intFun([log_radii(3),log_radii(4),x]),...
+%              intFun([log_radii(4),log_radii(5),x]),...
+%              intFun([log_radii(5),log_radii(6),x]),...
+%              intFun([log_radii(6),log_radii(7),x])];
     
     % Reduce dims.     
 %     probs = [probs,1-sum(probs)];
