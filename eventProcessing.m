@@ -112,15 +112,17 @@ for currentIdx = indices'
     fg(:,:,currentIdx) = fg_current;
 end
 
+
+clipNegatives = true; %Negative counts values set to zero
+%% fit FG after the event
 % Integrate to get in the same window
-windowStart = -5; %Should really be 0 for all cases
 windowSize = 20;
 buffer = 20;
+windowStart = -5; %Should really be 0 for all cases
 
-% fit FG
 sampleValid = time >= windowStart & time < (windowStart + windowSize + buffer);
 sample_preInt = fg(:,sampleValid,:);
-sample_int = zeros(size(fg,1),size(fg,3));
+sample_int_fg_after_all = zeros(size(fg,1),size(fg,3));
 
 for k = 1:size(sample_preInt,3)
     cumdt = 0;
@@ -135,36 +137,325 @@ for k = 1:size(sample_preInt,3)
         end
        
     end
-    sample_int(:,k) = cumdd;
+    sample_int_fg_after_all(:,k) = cumdd;
     
 end
 
 % Diameter array per each data set
-nValid = nnz(~isnan(sample_int(:,1)));
+nValid = nnz(~isnan(sample_int_fg_after_all(:,1)));
 
-sample_int_2 = zeros(nValid,size(sample_int,2));
-diameters_2 = zeros(size(sample_int_2,1)+1, size(sample_int_2,2));
+sample_int_fg_after = zeros(nValid,size(sample_int_fg_after_all,2));
+diameters_2 = zeros(size(sample_int_fg_after,1)+1, size(sample_int_fg_after,2));
 
-for k = 1:size(sample_int,2)
-    temp = sample_int(:,k);
+for k = 1:size(sample_int_fg_after_all,2)
+    temp = sample_int_fg_after_all(:,k);
     valid = ~isnan(temp);
     
-    sample_int_2(:,k) = temp(valid);
+    sample_int_fg_after(:,k) = temp(valid);
     diameters_2(:,k) = diameters([valid; true]);
 end
 
-%% Now run STAN code
-stan_data = struct('Nbins',size(diameters_2,1),'Nsamples',size(sample_int_2,2),'data_counts',sample_int_2','diameters',diameters_2');
+if clipNegatives
+    sample_int_fg_after(sample_int_fg_after<0) = 0;
+end
 
-currentLogBinSizes = log(diameters_2(2:end,1)) - log(diameters_2(1:end-1,1));
-[A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,1).', (sample_int(2:end,1)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.1, 'sig_UB', 50);
-%initVals.mu = mu_t - log(2);
-%initVals.sigma = sigma_t;
-initVals.mu_mu = mu_t - log(2);
-initVals.mu_sigma = 0.01;
-scale = 1;
-initVals.sigma_alpha = 2;
-initVals.sigma_beta = initVals.sigma_alpha/sigma_t;
+figure;
+for k=1:size(sample_int_fg_after,2)
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_fg_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    A_fg_after(k) = A_t;
+    mu_fg_after(k) = mu_t;
+    sigma_fg_after(k) = sigma_t;
+    
+end
+
+%% fit FG before the event
+windowSize = 20;
+buffer = 20;
+windowEnd = windowStart; %Should really be 0 for all cases
+
+sampleValid = time >= (windowStart- windowSize - buffer) & time < (windowEnd);
+sample_preInt = fg(:,sampleValid,:);
+sample_int_fg_before_all = zeros(size(fg,1),size(fg,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=1:size(sample_preInt,2)
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_fg_before_all(:,k) = cumdd;
+    
+end
+
+% Diameter array per each data set
+nValid = nnz(~isnan(sample_int_fg_before_all(:,1)));
+
+sample_int_fg_before = zeros(nValid,size(sample_int_fg_before_all,2));
+diameters_2 = zeros(size(sample_int_fg_before,1)+1, size(sample_int_fg_before,2));
+
+for k = 1:size(sample_int_fg_before_all,2)
+    temp = sample_int_fg_before_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_fg_before(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+
+if clipNegatives
+    sample_int_fg_before(sample_int_fg_before<0) = 0;
+end
+
+figure;
+for k=1:size(sample_int_fg_before,2)
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_fg_before(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    A_fg_before(k) = A_t;
+    mu_fg_before(k) = mu_t;
+    sigma_fg_before(k) = sigma_t;
+    
+end
+
+%% fit BG after the event
+% Integrate to get in the same window
+windowSize = 80;
+buffer = 20;
+windowStart = -5; %Should really be 0 for all cases
+
+sampleValid = time >= windowStart & time < (windowStart + windowSize + buffer);
+sample_preInt = bg(:,sampleValid,:);
+sample_int_bg_after_all = zeros(size(bg,1),size(bg,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=2:size(sample_preInt,2) % start from 2 to exclude the first point as data is cumulative after the event
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_bg_after_all(:,k) = cumdd;
+    
+end
+
+% Diameter array per each data set
+nValid = nnz(~isnan(sample_int_bg_after_all(:,1)));
+
+sample_int_bg_after = zeros(nValid,size(sample_int_bg_after_all,2));
+diameters_2 = zeros(size(sample_int_bg_after,1)+1, size(sample_int_bg_after,2));
+
+for k = 1:size(sample_int_bg_after_all,2)
+    temp = sample_int_bg_after_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_bg_after(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+
+figure;
+for k=1:size(sample_int_bg_after,2)
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_bg_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(0.2), 'sig_LB', 0.1, 'sig_UB', 50);
+    A_bg_after(k) = A_t;
+    mu_bg_after(k) = mu_t;
+    sigma_bg_after(k) = sigma_t;
+    
+end
+
+%% fit BG before the event
+windowSize = 80;
+buffer = 20;
+windowEnd = windowStart; %Should really be 0 for all cases
+
+sampleValid = time >= (windowStart- windowSize - buffer) & time < (windowEnd);
+sample_preInt = bg(:,sampleValid,:);
+sample_int_bg_before_all = zeros(size(bg,1),size(bg,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=1:size(sample_preInt,2)
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_bg_before_all(:,k) = cumdd;
+    
+end
+
+% Diameter array per each data set
+nValid = nnz(~isnan(sample_int_bg_before_all(:,1)));
+
+sample_int_bg_before = zeros(nValid,size(sample_int_bg_before_all,2));
+diameters_2 = zeros(size(sample_int_bg_before,1)+1, size(sample_int_bg_before,2));
+
+for k = 1:size(sample_int_bg_before_all,2)
+    temp = sample_int_bg_before_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_bg_before(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+
+figure;
+for k=1:size(sample_int_bg_before,2)
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_bg_before(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(0.2), 'sig_LB', 0.1, 'sig_UB', 50);
+    A_bg_before(k) = A_t;
+    mu_bg_before(k) = mu_t;
+    sigma_bg_before(k) = sigma_t;
+    
+end
+%% Plot
+subplot(3,2,1)
+plot(A_fg_before,A_fg_after,'x');
+hold on;
+plot(A_fg_before,A_fg_before);
+title('Amount of aerosol');
+
+subplot(3,2,3)
+plot(mu_fg_before,mu_fg_after,'x');
+hold on;
+plot(mu_fg_before,mu_fg_before);
+title('mu');
+
+subplot(3,2,5)
+plot(sigma_fg_before,sigma_fg_after,'x');
+hold on;
+plot(sigma_fg_before,sigma_fg_before);
+title('sigma');
+
+subplot(3,2,2)
+plot(A_bg_before,A_bg_after,'x');
+hold on;
+plot(A_bg_before,A_bg_before);
+title('Amount of aerosol');
+
+subplot(3,2,4)
+plot(mu_bg_before,mu_bg_after,'x');
+hold on;
+plot(mu_bg_before,mu_bg_before);
+title('mu');
+
+subplot(3,2,6)
+plot(sigma_bg_before,sigma_bg_after,'x');
+hold on;
+plot(sigma_bg_before,sigma_bg_before);
+title('sigma');
+
+%% Fits
+% [A_fg_before_mu, A_fg_before_sig] = normfit(A_fg_before);
+% [A_fg_after_mu, A_fg_after_sig] = normfit(A_fg_after);
+% [A_bg_before_mu, A_bg_before_sig] = normfit(A_bg_before);
+% [A_bg_after_mu, A_bg_after_sig] = normfit(A_bg_after);
+% A_fg_before_phat = gamfit(A_fg_before);
+% A_fg_after_phat = gamfit(A_fg_after);
+% A_bg_before_phat = gamfit(A_bg_before);
+% A_bg_after_phat = gamfit(A_bg_after);
+A_fg_before_phat = gamfit(A_fg_before);
+A_fg_after_phat = gamfit(A_fg_after);
+A_bg_before_phat = lognfit(A_bg_before);
+A_bg_after_phat = lognfit(A_bg_after);
+
+
+[mu_fg_before_mu, mu_fg_before_sig] = normfit(mu_fg_before);
+[mu_fg_after_mu, mu_fg_after_sig] = normfit(mu_fg_after);
+[mu_bg_before_mu, mu_bg_before_sig] = normfit(mu_bg_before);
+[mu_bg_after_mu, mu_bg_after_sig] = normfit(mu_bg_after);
+
+sigma_fg_before_phat = gamfit(sigma_fg_before);
+sigma_fg_after_phat = gamfit(sigma_fg_after);
+sigma_bg_before_phat = gamfit(sigma_bg_before);
+sigma_bg_after_phat = gamfit(sigma_bg_after);
+
+plot_A = linspace(0,1e7,500);
+plot_mu = linspace(-5,1,500);
+plot_sig = linspace(0,2,500);
+
+figure;
+subplot(6,2,1);
+plot(exp(plot_mu), normpdf(plot_mu,mu_fg_before_mu, mu_fg_before_sig));
+title('mu fg before dist');
+
+subplot(6,2,2);
+plot(exp(plot_mu), normpdf(plot_mu,mu_fg_after_mu, mu_fg_after_sig));
+title('mu fg after dist');
+
+subplot(6,2,3);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_fg_before_phat(1), sigma_fg_before_phat(2)));
+title('sigma fg before dist');
+
+subplot(6,2,4);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_fg_after_phat(1), sigma_fg_after_phat(2)));
+title('sigma fg after dist');
+
+subplot(6,2,5);
+plot((plot_A), gampdf(plot_A,A_fg_before_phat(1), A_fg_before_phat(2)));
+title('A fg before dist');
+
+subplot(6,2,6);
+plot((plot_A), gampdf(plot_A,A_fg_after_phat(1), A_fg_after_phat(2)));
+title('A fg after dist');
+
+subplot(6,2,7);
+plot(exp(plot_mu), normpdf(plot_mu,mu_bg_before_mu, mu_bg_before_sig));
+title('mu bg before dist');
+
+subplot(6,2,8);
+plot(exp(plot_mu), normpdf(plot_mu,mu_bg_after_mu, mu_bg_after_sig));
+title('mu bg after dist');
+
+subplot(6,2,9);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_bg_before_phat(1), sigma_bg_before_phat(2)));
+title('sigma bg before dist');
+
+subplot(6,2,10);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_bg_after_phat(1), sigma_bg_after_phat(2)));
+title('sigma bg after dist');
+
+subplot(6,2,11);
+plot((plot_A), lognpdf(plot_A,A_bg_before_phat(1), A_bg_before_phat(2)));
+title('A bg before dist');
+
+subplot(6,2,12);
+plot((plot_A), lognpdf(plot_A,A_bg_after_phat(1), A_bg_after_phat(2)));
+title('A bg after dist');
+
+
+
+
+%% Now run STAN code
+stan_data = struct('Nbins',size(diameters_2,1),'Nsamples',size(sample_int_fg_after,2),'data_counts',sample_int_fg_after','diameters',diameters_2');
+
+N = size(sample_int_fg_after,2);
+alpha_est = N*sum(sigma_fg_after)/(N*sum(sigma_fg_after .* log(sigma_fg_after)) - sum(log(sigma_fg_after)*sum(sigma_fg_after)));
+theta_est = 1/N^2 * (N*sum(sigma_fg_after .* log(sigma_fg_after)) - sum(log(sigma_fg_after)*sum(sigma_fg_after)));
+beta_est = 1/theta_est;
+
+
+initVals.mu_mu = mean(mu_fg_after) - log(2);
+initVals.mu_sigma = std(mu_fg_after);
+
+phat = gamfit(sigma_fg_after);
+initVals.sigma_alpha = phat(1);
+initVals.sigma_beta = phat(2);
 
 figure;
 subplot(2,1,1);
