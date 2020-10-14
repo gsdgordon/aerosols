@@ -1073,24 +1073,24 @@ classdef StanModel < handle
 %                      self.update_model('file',fname);
 %                      return;
 %                   end
-                  if self.file_overwrite
-                     mstan.write_lines(fname,arg);
-                     self.update_model('file',fname);
-                     self.delete_binary();
-                  else
-                     [filename,filepath] = uiputfile('*.stan','Name stan model');
-                     [~,name] = fileparts(filename);
-                     self.model_name_ = name;
-                     self.model_home = filepath;
-
-                     mstan.write_lines(self.model_path,arg);
-                     self.update_model('file',self.model_path);
-                     self.delete_binary();
-                  end
-               else
-                  mstan.write_lines(fname,arg);
-                  self.update_model('file',fname);
-                  self.delete_binary();
+% %                   if self.file_overwrite
+% %                      mstan.write_lines(fname,arg);
+% %                      self.update_model('file',fname);
+% %                      self.delete_binary();
+% %                   else
+% %                      [filename,filepath] = uiputfile('*.stan','Name stan model');
+% %                      [~,name] = fileparts(filename);
+% %                      self.model_name_ = name;
+% %                      self.model_home = filepath;
+% % 
+% %                      mstan.write_lines(self.model_path,arg);
+% %                      self.update_model('file',self.model_path);
+% %                      self.delete_binary();
+% %                   end
+% %                else
+% %                   mstan.write_lines(fname,arg);
+% %                   self.update_model('file',fname);
+% %                   self.delete_binary();
                end
             otherwise
                error('');
