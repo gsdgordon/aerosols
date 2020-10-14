@@ -470,7 +470,21 @@ plot_sig_sig = gampdf(plot_sig,initVals.sigma_alpha,initVals.sigma_beta);
 plot(plot_sig, plot_sig_sig);
 title('distribtion of sigma');
 
-fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',false, 'init', initVals, 'chains', 8, 'iter', 125000);
+fileID = fopen('lognormal_inf.stan');
+model_code = textscan(fileID,'%s');
+model_code = model_code{:};
+fclose(fileID);
+
+control.stepsize = 0.1;
+control.delta = 0.99;
+
+sm = StanModel('model_code',model_code, 'model_name', 'lognormal_inf','verbose',true, 'init', initVals, 'chains', 1, 'iter', 5000, 'control', control, 'file_overwrite', true);
+%sm.compile();
+
+% subsequent calls will skip recompilation
+fit = sm.sampling('data',stan_data);
+
+%fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'init', initVals, 'chains', 4, 'iter', 4000);
 %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'chains', 4, 'iter', 1000);
 fit.block()
 
