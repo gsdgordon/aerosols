@@ -470,7 +470,7 @@ plot_sig_sig = gampdf(plot_sig,initVals.sigma_alpha,initVals.sigma_beta);
 plot(plot_sig, plot_sig_sig);
 title('distribtion of sigma');
 
-fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'init', initVals, 'chains', 8, 'iter', 125000);
+fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',false, 'init', initVals, 'chains', 8, 'iter', 125000);
 %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'chains', 4, 'iter', 1000);
 fit.block()
 
