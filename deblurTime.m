@@ -2,11 +2,11 @@ clc;
 clear variables;
 close all;
 
-T = imread('ED_time.png');
+T = imread('vlcsnap-2020-10-14-11h25m57s762.png');
 
 T = double(T);
 T = mean(T,3);
-T_crop = T(600:end,1600:end);
+T_crop = T;%T(600:end,1600:end);
 
 imagesc(T_crop);
 axis image;
