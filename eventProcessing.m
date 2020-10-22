@@ -13,36 +13,61 @@ close all;
 %addpath('./MatlabStan-2.15.1.0');
 %addpath('/home/george/Apps/cmdstan');
 
+folder = '../../StudyData';
+file = 'procedureends_lowerGI.csv';
+filepath = fullfile(folder,file);
+
 % Load data
-opts = detectImportOptions(['extubation.csv']);
-opts.DataLines = [1, 5];
-opts.RowNamesColumn = 1;
-opts.VariableNamesLine = 0;
-opts.PreserveVariableNames = true;
-opts.VariableTypes{1} = 'char';
-opts.VariableTypes{2} = 'char';
-headers = readtable(['extubation.csv'],opts, 'ReadRowNames', true, 'ReadVariableNames', false);
-headers = headers(1:5,2);
+opts = detectImportOptions(filepath);
 
-startTime = str2double(headers(3,1).Var2{1});
-endTime = str2double(headers(4,1).Var2{1});
-timeStep = str2double(headers(5,1).Var2{1});
+isFullData = false;
+if isFullData
+    opts.DataLines = [1, 5];
+    opts.RowNamesColumn = 1;
+    opts.VariableNamesLine = 0;
+    opts.PreserveVariableNames = true;
+    opts.VariableTypes{1} = 'char';
+    opts.VariableTypes{2} = 'char';
+    headers = readtable(filepath,opts, 'ReadRowNames', true, 'ReadVariableNames', false);
+    headers = headers(1:5,2);  
 
-T = readtable(['extubation.csv'],'ReadVariableNames', true, 'HeaderLines',6);
+    startTime = str2double(headers(3,1).Var2{1});
+    endTime = str2double(headers(4,1).Var2{1});
+    timeStep = str2double(headers(5,1).Var2{1});
+    
+    T = readtable(filepath,'ReadVariableNames', true, 'HeaderLines',6);
+    
+    indices = unique(T.Index);
+    diameters = T(T.Index == indices(1),26);
+    diameters = table2array(diameters);
+    dataStartCol = 27;
+else
+    T = readtable(filepath,'ReadVariableNames', true, 'HeaderLines',0);
+    
+    indices = 1:(size(T,1)/7);
+    indices = indices';
+    indices_tab = kron(indices, ones(7,1));
+    T = addvars(T,indices_tab,'Before','x_180', 'NewVariableNames','Index');
+    diameters = [0.3; 0.5; 0.7; 1.0; 3.0; 5.0; 10.0];
+    
+    startTime = -180;
+    timeStep = 1;
+    endTime = 180;
+    
+    dataStartCol = 2;
+end
 
-indices = unique(T.Index);
+
 nItems = size(indices,1);
 
 maxDiameter = 25; % Should load this from datasheet?
-diameters = T(T.Index == indices(1),26);
-diameters = table2array(diameters);
 diameters = [diameters; maxDiameter];
 
 time = startTime:timeStep:endTime;
 nTimes = (endTime - startTime)/timeStep + 1;
 
 validRows = T.Index == 1; % FIX should loop for other indices and check
-tempData = table2array(T(validRows,27:27+nTimes-1));
+tempData = table2array(T(validRows,dataStartCol:dataStartCol+nTimes-1));
 bg = zeros(size(tempData,1), size(tempData,2), size(indices,1));
 fg = zeros(size(tempData,1), size(tempData,2), size(indices,1));
 avSampleTimes = zeros(size(indices,1),1);
@@ -52,7 +77,7 @@ for currentIdx = indices'
     
     validRows = T.Index == currentIdx;
 
-    data = table2array(T(validRows,27:27+nTimes-1));
+    data = table2array(T(validRows,dataStartCol:dataStartCol+nTimes-1));
     
     % Find valid diameters
     validDiams = ~all(isnan(data),2);
@@ -95,32 +120,198 @@ for currentIdx = indices'
 
     for k=1:nSizes
 
-        subplot(nSizes,1,k);
+        subplot(nSizes,3,3*(k-1)+1);
         currentValid = ~isnan(data(k,:));
         plot(time(currentValid),data(k,currentValid),'Color',tColor(k,:));
-        hold on;
-        plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+        %hold on;
+        %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
 
         title(['Diameter: ', num2str(diameters(k)), '\mum']);
         ylabel('#/m^3');
         xlabel('time')
-
+        
+        if currentIdx == indices(1)
+            xline(0,'k:');
+        end
         hold on;
+        
+        subplot(nSizes,3,3*(k-1)+2);
+        currentValid = ~isnan(data(k,:));
+        plot(time(currentValid),bg_current(k,currentValid),'Color',tColor(k,:),'LineStyle',':', 'LineWidth',1);
+
+        title(['Diameter: ', num2str(diameters(k)), '\mum']);
+        ylabel('#/m^3');
+        xlabel('time')
+        if currentIdx == indices(1)
+            xline(0,'k:');
+        end
+        hold on;
+        
+        subplot(nSizes,3,3*(k-1)+3);
+        currentValid = ~isnan(data(k,:));
+        plot(time(currentValid),fg_current(k,currentValid),'Color',tColor(k,:));
+
+        title(['Diameter: ', num2str(diameters(k)), '\mum']);
+        ylabel('#/m^3');
+        xlabel('time')
+        if currentIdx == indices(1)
+            xline(0,'k:');
+        end
+        hold on;
+        
+        %pause(0.1);
     end
 
     bg(:,:,currentIdx) = bg_current;
     fg(:,:,currentIdx) = fg_current;
+    raw(:,:,currentIdx) = data;
 end
 
+disp('here');
 
 clipNegatives = true; %Negative counts values set to zero
-%% fit FG after the event
-% Integrate to get in the same window
-windowSize = 20;
+%% Raw difference
+rawdiffwindowSize = 50;
 buffer = 20;
 windowStart = -5; %Should really be 0 for all cases
 
-sampleValid = time >= windowStart & time < (windowStart + windowSize + buffer);
+sampleValid = time >= windowStart & time < (windowStart + rawdiffwindowSize + buffer);
+sample_preInt = raw(:,sampleValid,:);
+sample_int_raw_after_all = zeros(size(raw,1),size(raw,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=2:size(sample_preInt,2) % start from 2 to exclude the first point as data is cumulative after the event
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_raw_after_all(:,k) = cumdd;
+end
+
+windowEnd = windowStart; %Should really be 0 for all cases
+
+sampleValid = time >= (windowStart- rawdiffwindowSize - buffer) & time < (windowEnd);
+sample_preInt = raw(:,sampleValid,:);
+sample_int_raw_before_all = zeros(size(raw,1),size(raw,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=1:size(sample_preInt,2)
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_raw_before_all(:,k) = cumdd;
+    
+end
+
+sample_int_raw_diff_all = sample_int_raw_after_all - sample_int_raw_before_all;
+
+% Diameter array per each data set
+nValid = nnz(~isnan(sample_int_raw_diff_all(:,1)));
+
+sample_int_raw_diff = zeros(nValid,size(sample_int_raw_diff_all,2));
+diameters_2 = zeros(size(sample_int_raw_diff,1)+1, size(sample_int_raw_diff,2));
+
+for k = 1:size(sample_int_raw_diff_all,2)
+    temp = sample_int_raw_diff_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_raw_diff(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+
+
+figure;
+for k=1:size(sample_int_raw_diff,2)
+    figure;
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    currentData = sample_int_raw_diff(1:end,k);
+    currentData_raw = currentData;
+    currentDiameters = diameters_2(:,k);
+        
+    if clipNegatives
+        validSamples = currentData >= 0;
+        
+        m = 1;
+        while ~validSamples(m) && m <= 2
+            m = m+1;
+        end
+        
+        currentData = currentData(m:end);
+        currentLogBinSizes = currentLogBinSizes(m:end);
+        currentDiameters = currentDiameters(m:end);
+        
+        currentData(currentData<0) = 0;
+    end
+    
+    A_t = sum(currentData_raw);
+    
+    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    A_diff(k) = A_t;
+    mu_diff(k) = mu_t;
+    sigma_diff(k) = sigma_t;
+    
+end
+
+% if clipNegatives
+%     A_fg_after(A_fg_after<0) = 0;
+%     %A_fg_after= A_fg_after(A_fg_after>0);
+% end
+
+
+figure;
+subplot(3,2,1);
+scatter(mu_diff,zeros(size(mu_diff)),'kx','LineWidth',2);
+xlabel('mu');
+title('mu marginal');
+
+subplot(3,2,3);
+scatter(sigma_diff,zeros(size(sigma_diff)),'kx','LineWidth',2);
+xlabel('sigma');
+title('sigma marginal');
+
+
+subplot(3,2,5);
+scatter(A_diff,zeros(size(A_diff)),'kx','LineWidth',2);
+xlabel('A');
+title('A marginal');
+
+subplot(3,2,2);
+scatter(A_diff, mu_diff,'kx','LineWidth',2);
+xlabel('A');
+ylabel('mu');
+
+subplot(3,2,4);
+scatter(mu_diff,sigma_diff,'kx','LineWidth',2);
+xlabel('mu');
+ylabel('sigma');
+
+subplot(3,2,6);
+scatter(A_diff,sigma_diff,'kx','LineWidth',2);
+xlabel('A');
+ylabel('sigma');
+
+%% fit FG after the event
+% Integrate to get in the same window
+fgwindowSize = 50;
+buffer = 20;
+windowStart = -5; %Should really be 0 for all cases
+
+sampleValid = time >= windowStart & time < (windowStart + fgwindowSize + buffer);
 sample_preInt = fg(:,sampleValid,:);
 sample_int_fg_after_all = zeros(size(fg,1),size(fg,3));
 
@@ -169,12 +360,16 @@ for k=1:size(sample_int_fg_after,2)
     
 end
 
+if clipNegatives
+    A_fg_after(A_fg_after<0) = 0;
+    %A_fg_after= A_fg_after(A_fg_after>0);
+end
+
 %% fit FG before the event
-windowSize = 20;
 buffer = 20;
 windowEnd = windowStart; %Should really be 0 for all cases
 
-sampleValid = time >= (windowStart- windowSize - buffer) & time < (windowEnd);
+sampleValid = time >= (windowStart- fgwindowSize - buffer) & time < (windowEnd);
 sample_preInt = fg(:,sampleValid,:);
 sample_int_fg_before_all = zeros(size(fg,1),size(fg,3));
 
@@ -221,6 +416,15 @@ for k=1:size(sample_int_fg_before,2)
     mu_fg_before(k) = mu_t;
     sigma_fg_before(k) = sigma_t;
     
+    if k==7
+        a = 1;
+    end
+    
+end
+
+if clipNegatives
+    A_fg_before(A_fg_before<0) = 0;
+    %A_fg_before = A_fg_before(A_fg_before>0);
 end
 
 %% fit BG after the event
@@ -324,41 +528,41 @@ for k=1:size(sample_int_bg_before,2)
     
 end
 %% Plot
-subplot(3,2,1)
-plot(A_fg_before,A_fg_after,'x');
-hold on;
-plot(A_fg_before,A_fg_before);
-title('Amount of aerosol');
-
-subplot(3,2,3)
-plot(mu_fg_before,mu_fg_after,'x');
-hold on;
-plot(mu_fg_before,mu_fg_before);
-title('mu');
-
-subplot(3,2,5)
-plot(sigma_fg_before,sigma_fg_after,'x');
-hold on;
-plot(sigma_fg_before,sigma_fg_before);
-title('sigma');
-
-subplot(3,2,2)
-plot(A_bg_before,A_bg_after,'x');
-hold on;
-plot(A_bg_before,A_bg_before);
-title('Amount of aerosol');
-
-subplot(3,2,4)
-plot(mu_bg_before,mu_bg_after,'x');
-hold on;
-plot(mu_bg_before,mu_bg_before);
-title('mu');
-
-subplot(3,2,6)
-plot(sigma_bg_before,sigma_bg_after,'x');
-hold on;
-plot(sigma_bg_before,sigma_bg_before);
-title('sigma');
+% subplot(3,2,1)
+% plot(A_fg_before,A_fg_after,'x');
+% hold on;
+% plot(A_fg_before,A_fg_before);
+% title('Amount of aerosol');
+% 
+% subplot(3,2,3)
+% plot(mu_fg_before,mu_fg_after,'x');
+% hold on;
+% plot(mu_fg_before,mu_fg_before);
+% title('mu');
+% 
+% subplot(3,2,5)
+% plot(sigma_fg_before,sigma_fg_after,'x');
+% hold on;
+% plot(sigma_fg_before,sigma_fg_before);
+% title('sigma');
+% 
+% subplot(3,2,2)
+% plot(A_bg_before,A_bg_after,'x');
+% hold on;
+% plot(A_bg_before,A_bg_before);
+% title('Amount of aerosol');
+% 
+% subplot(3,2,4)
+% plot(mu_bg_before,mu_bg_after,'x');
+% hold on;
+% plot(mu_bg_before,mu_bg_before);
+% title('mu');
+% 
+% subplot(3,2,6)
+% plot(sigma_bg_before,sigma_bg_after,'x');
+% hold on;
+% plot(sigma_bg_before,sigma_bg_before);
+% title('sigma');
 
 %% Fits
 % [A_fg_before_mu, A_fg_before_sig] = normfit(A_fg_before);
@@ -374,70 +578,111 @@ A_fg_after_phat = gamfit(A_fg_after);
 A_bg_before_phat = lognfit(A_bg_before);
 A_bg_after_phat = lognfit(A_bg_after);
 
+[mu_diff_mu, mu_diff_sig] = normfit(mu_diff);
+[A_diff_mu, A_diff_sig] = normfit(A_diff);
+
 
 [mu_fg_before_mu, mu_fg_before_sig] = normfit(mu_fg_before);
 [mu_fg_after_mu, mu_fg_after_sig] = normfit(mu_fg_after);
 [mu_bg_before_mu, mu_bg_before_sig] = normfit(mu_bg_before);
 [mu_bg_after_mu, mu_bg_after_sig] = normfit(mu_bg_after);
 
+%mu_fg_diff = mu_fg_after - mu_fg_before;
+%mu_bg_diff = mu_bg_after - mu_bg_before;
+%[mu_fg_diff_mu, mu_fg_diff_sig] = normfit(mu_fg_diff);
+%[mu_bf_diff_mu, mu_bg_diff_sig] = normfit(mu_fg_diff);
+
 sigma_fg_before_phat = gamfit(sigma_fg_before);
 sigma_fg_after_phat = gamfit(sigma_fg_after);
 sigma_bg_before_phat = gamfit(sigma_bg_before);
 sigma_bg_after_phat = gamfit(sigma_bg_after);
 
-plot_A = linspace(0,1e7,500);
+%sig_
+%sigma_fg_diff_phat = gamfit(sigma_fg_after - sig_bg_before);
+%sigma_bg_diff_phat = gamfit(sigma_bg_after - sig_bg_before);
+
+plot_A_bg = linspace(0,2e8,500);
+plot_A_fg = linspace(0,1e6,500);
 plot_mu = linspace(-5,1,500);
 plot_sig = linspace(0,2,500);
 
+
+%rejectionSampleLognorm(sample_int_fg_after, diameters_2, mu_fg_after_mu, mu_fg_after_sig, sigma_fg_after_phat(1), sigma_fg_after_phat(2), mu_fg_after, sigma_fg_after)
+
+
 figure;
-subplot(6,2,1);
-plot(exp(plot_mu), normpdf(plot_mu,mu_fg_before_mu, mu_fg_before_sig));
-title('mu fg before dist');
+subplot(6,1,1);
+plot(exp(plot_mu), normpdf(plot_mu,mu_fg_before_mu, mu_fg_before_sig),'b');
+hold on;
+scatter(exp(mu_fg_before),zeros(size(mu_fg_before)),'xb','LineWidth',2);
+xlim([min(exp(plot_mu)),max(exp(plot_mu))]);
+title('mu fg dist');
+xlabel('diameter (\mum)');
+plot(exp(plot_mu), normpdf(plot_mu,mu_fg_after_mu, mu_fg_after_sig),'r');
+hold on;
+scatter(exp(mu_fg_after),ones(size(mu_fg_after))*1.1*max(normpdf(plot_mu,mu_fg_after_mu, mu_fg_after_sig)),'xr','LineWidth',2);
+xlim([min(exp(plot_mu)),max(exp(plot_mu))]);
+legend('before','','after');
 
-subplot(6,2,2);
-plot(exp(plot_mu), normpdf(plot_mu,mu_fg_after_mu, mu_fg_after_sig));
-title('mu fg after dist');
+subplot(6,1,2);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_fg_before_phat(1), sigma_fg_before_phat(2)),'b');
+hold on;
+scatter(exp(sigma_fg_before),zeros(size(sigma_fg_before)),'bx','LineWidth',2);
+xlim([min(exp(plot_sig)),max(exp(plot_sig))]);
+title('sigma fg dist');
+plot(exp(plot_sig), gampdf(plot_sig,sigma_fg_after_phat(1), sigma_fg_after_phat(2)),'r');
+hold on;
+scatter(exp(sigma_fg_after),zeros(size(sigma_fg_after)),'rx','LineWidth',2);
+xlim([min(exp(plot_sig)),max(exp(plot_sig))]);
+xlabel('diameter (\mum)');
+legend('before','','after');
 
-subplot(6,2,3);
-plot(exp(plot_sig), gampdf(plot_sig,sigma_fg_before_phat(1), sigma_fg_before_phat(2)));
-title('sigma fg before dist');
+subplot(6,1,3);
+plot((plot_A_fg), gampdf(plot_A_fg,A_fg_before_phat(1), A_fg_before_phat(2)), 'b');
+%plot((plot_A_fg), lognpdf(plot_A_fg,A_fg_before_phat(1), A_fg_before_phat(2)));
+hold on;
+scatter(A_fg_before,zeros(size(A_fg_before)),'bx','LineWidth',2);
+plot((plot_A_fg), gampdf(plot_A_fg,A_fg_after_phat(1), A_fg_after_phat(2)),'r');
+%plot((plot_A_fg), lognpdf(plot_A_fg,A_fg_after_phat(1), A_fg_after_phat(2)));
+scatter(A_fg_after,zeros(size(A_fg_after)),'rx','LineWidth',2);
+%xlim([min(plot_A_fg),max(plot_A_fg)]);
+title('A fg dist');
+legend('before','','after');
 
-subplot(6,2,4);
-plot(exp(plot_sig), gampdf(plot_sig,sigma_fg_after_phat(1), sigma_fg_after_phat(2)));
-title('sigma fg after dist');
+subplot(6,1,4);
+plot(exp(plot_mu), normpdf(plot_mu,mu_bg_before_mu, mu_bg_before_sig),'b');
+hold on;
+scatter(exp(mu_bg_before),zeros(size(mu_bg_before)),'bx','LineWidth',2);
+%xlim([min(exp(plot_mu)),max(exp(plot_mu))]);
+plot(exp(plot_mu), normpdf(plot_mu,mu_bg_after_mu, mu_bg_after_sig),'r');
+scatter(exp(mu_bg_after),zeros(size(mu_bg_after)),'rx','LineWidth',2);
+xlim([min(exp(plot_mu)),max(exp(plot_mu))]);
+title('mu bg dist');
+legend('before','','after');
 
-subplot(6,2,5);
-plot((plot_A), gampdf(plot_A,A_fg_before_phat(1), A_fg_before_phat(2)));
-title('A fg before dist');
+subplot(6,1,5);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_bg_before_phat(1), sigma_bg_before_phat(2)),'b');
+hold on;
+scatter(exp(sigma_bg_before),zeros(size(sigma_bg_before)),'bx','LineWidth',2);
+%xlim([min(exp(plot_sig)),max(exp(plot_sig))]);
+plot(exp(plot_sig), gampdf(plot_sig,sigma_bg_after_phat(1), sigma_bg_after_phat(2)),'r');
+hold on;
+scatter(exp(sigma_bg_after),zeros(size(sigma_bg_after)),'rx','LineWidth',2);
+xlim([min(exp(plot_sig)),max(exp(plot_sig))]);
+title('sigma bg dist');
+legend('before','','after');
 
-subplot(6,2,6);
-plot((plot_A), gampdf(plot_A,A_fg_after_phat(1), A_fg_after_phat(2)));
-title('A fg after dist');
-
-subplot(6,2,7);
-plot(exp(plot_mu), normpdf(plot_mu,mu_bg_before_mu, mu_bg_before_sig));
-title('mu bg before dist');
-
-subplot(6,2,8);
-plot(exp(plot_mu), normpdf(plot_mu,mu_bg_after_mu, mu_bg_after_sig));
-title('mu bg after dist');
-
-subplot(6,2,9);
-plot(exp(plot_sig), gampdf(plot_sig,sigma_bg_before_phat(1), sigma_bg_before_phat(2)));
-title('sigma bg before dist');
-
-subplot(6,2,10);
-plot(exp(plot_sig), gampdf(plot_sig,sigma_bg_after_phat(1), sigma_bg_after_phat(2)));
-title('sigma bg after dist');
-
-subplot(6,2,11);
-plot((plot_A), lognpdf(plot_A,A_bg_before_phat(1), A_bg_before_phat(2)));
-title('A bg before dist');
-
-subplot(6,2,12);
-plot((plot_A), lognpdf(plot_A,A_bg_after_phat(1), A_bg_after_phat(2)));
-title('A bg after dist');
-
+subplot(6,1,6);
+plot((plot_A_bg), lognpdf(plot_A_bg,A_bg_before_phat(1), A_bg_before_phat(2)),'b');
+hold on;
+scatter(A_bg_before,zeros(size(A_bg_before)),'bx','LineWidth',2);
+%xlim([min(plot_A_fg),max(plot_A_fg)]);
+plot((plot_A_bg), lognpdf(plot_A_bg,A_bg_after_phat(1), A_bg_after_phat(2)),'r');
+hold on;
+scatter(A_bg_after,zeros(size(A_bg_after)),'rx','LineWidth',2);
+%xlim([min(plot_A_fg),max(plot_A_fg)]);
+title('A bg dist');
+legend('before','','after');
 
 
 

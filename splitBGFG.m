@@ -12,7 +12,7 @@ function [bg, fg] = splitBGFG(density, avSampleTime, validTimes)
         end
 
         padSize = 100;
-        currentBG = padarray(currentBG,[0,padSize],'replicate');
+        currentBG = padarray(currentBG,[0,padSize],'replicate'); %FIX use median of last 3 values?
         currentBG = medfilt1(currentBG,15);
 
         sampleFreq = 1/avSampleTime; % in Hz
