@@ -11,12 +11,13 @@ close all;
 
 % Load data
 Y = 2020;
-M = 9;
-D = 15;
+M = 10;
+D = 22;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
-folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
+%folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
+folder = ['/home/george/Desktop/'];
 
 T = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
 
@@ -38,8 +39,8 @@ endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
 opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(Y,M,D,14,20,00);
-endTime = datetime(Y,M,D,17,50,00);
+startTime = datetime(Y,M,D,10,12,00);
+endTime = datetime(Y,M,D,18,22,00);
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
@@ -56,11 +57,12 @@ maxDiameter = 25; % in microns - this is from the spec sheet
 diameters = [T.Ch1Size__m_(1),T.Ch2Size__m_(1),T.Ch3Size__m_(1),T.Ch4Size__m_(1),T.Ch5Size__m_(1),T.Ch6Size__m_(1), maxDiameter];
 diameters_av = (diameters(1:6)+diameters(2:7))/2; % Mean diameter in each bin
 
-
 % The actual counts in each bin
 data = [T.Ch1Diff___,T.Ch2Diff___,T.Ch3Diff___,T.Ch4Diff___,T.Ch5Diff___,T.Ch6Diff___];
 data = data./repmat(airVol,1,size(data,2)) * 1000; %Because volume is liters so times by 1000 to get to m^3
+data = data';
 
+[bg_data, fg_data] = splitBGFG(data, avSampleTime, true(1,size(data,2)));
 
 % Convert counts to volumes
 vols = 4/3*pi*(diameters_av/2).^3 * (1e-6)^3;
@@ -68,167 +70,148 @@ vols = 4/3*pi*(diameters_av/2).^3 * (1e-6)^3;
 bin_sizes = diameters(2:7) - diameters(1:6);
 log_bin_sizes = log(diameters(2:7)) - log(diameters(1:6));
 
-data_v = data .* repmat(vols,size(data,1),1);
+data_v = data .* repmat(vols',1,size(data,2));
 
 % Densities so that a probability density approach can be used
-data_v_density = data_v ./ repmat(log_bin_sizes,size(data,1),1); %Try using log binsizes
-data_density = data ./ repmat(log_bin_sizes,size(data,1),1);
+data_v_density = data_v ./ repmat(log_bin_sizes',1,size(data,2)); %Try using log binsizes
+data_density = data ./ repmat(log_bin_sizes',1,size(data,2));
 %data_v_density = data_v ./ repmat(bin_sizes,size(data,1),1); %Try using linear binsizes
 %data_density = data ./ repmat(bin_sizes,size(data,1),1);
 
-nSizes = size(data,2);
+bg_density = bg_data ./ repmat(log_bin_sizes',1,size(data,2));
+fg_density = fg_data ./ repmat(log_bin_sizes',1,size(data,2));
+
+nSizes = size(data,1);
 tColor = lines(nSizes);
 
-% Get a background reading
-%bgStartTime = datetime(2020,9,30,11,21,00);
-%bgEndTime = datetime(2020,9,30,11,23,00);
-bgStartTime = startTime;
-bgEndTime = endTime;
-bgValid = isbetween(opTime2,bgStartTime,bgEndTime);
-bg_density_raw = data_density(bgValid,:);
-
-
-for k=1:nSizes
-  
-    currentBG = bg_density_raw(:,k);
-    
-    padSize = 100;
-    currentBG = padarray(currentBG,padSize,'replicate');
-    currentBG = medfilt1(currentBG,15);
-    
-    sampleFreq = 1/avSampleTime; % in Hz
-    cutoffFreq = 0.01; %in Hz
-    
-
-    currentBG = lowpass(currentBG,cutoffFreq,sampleFreq, 'ImpulseResponse','fir');
-    
-    
-    currentBG = currentBG(padSize+1:end-padSize);
-    bg_density_filt(:,k) = currentBG;
-end
-
-fg_density = bg_density_raw - bg_density_filt;
-fg_density(fg_density < 0) = 0; % Can't have negative signal
 
 % Plot smoothed
 figure;
 for k=1:nSizes
     
-    subplot(nSizes,1,k);
-    plot(opTime2,bg_density_raw(:,k),'Color',tColor(k,:));
+    subplot(nSizes,3,3*(k-1)+1);
+    plot(opTime2,data_density(k,:),'Color',tColor(k,:));
     hold on;
-    plot(opTime2,bg_density_filt(:,k),'Color','black','LineStyle',':', 'LineWidth',2);
+    plot(opTime2,bg_density(k,:),'Color','black','LineStyle',':', 'LineWidth',2);
+    title(['Diameter: ', num2str(diameters(k)), '\mum']);
+    ylabel('#/m^3');
+    xlabel('time')
+    ylim_curr = ylim;
+   
+    subplot(nSizes,3,3*(k-1)+2);
+    plot(opTime2,bg_density(k,:),'Color',tColor(k,:),'LineStyle',':');
 
     title(['Diameter: ', num2str(diameters(k)), '\mum']);
     ylabel('#/m^3');
     xlabel('time')
-
-end
-
-centreTime_idx = 76;
-resampleHalfWidthTime = 180;
-startTime_idx = ceil(centreTime_idx - resampleHalfWidthTime/avSampleTime);
-endTime_idx = floor(centreTime_idx + resampleHalfWidthTime/avSampleTime);
-data_samp = data(startTime_idx:endTime_idx,:);
-data_t = ((startTime_idx:1:endTime_idx) - centreTime_idx)*avSampleTime;
-
-
-new_t = -resampleHalfWidthTime:resampleHalfWidthTime;
-new_data = zeros(size(new_t,2), size(data_samp,2));
-
-count = 1;
-for tIdx = 1:size(new_t,2)
-    if count <= size(data_t,2)
-        if data_t(count) == new_t(tIdx)
-            new_data(tIdx,:) = data_samp(count,:);
-        	count = count + 1;
-        else
-            new_data(tIdx,:) = NaN;
-        end
-    else
-        new_data(tIdx,:) = NaN;
-    end
-end
-
-new_data = new_data';
-
-% Plot FG
-figure;
-for k=1:nSizes
+    ylim([ylim_curr]);
     
-    subplot(nSizes,1,k);
-    plot(opTime2,fg_density(:,k),'Color',tColor(k,:));
+    subplot(nSizes,3,3*(k-1)+3);
+    plot(opTime2,fg_density(k,:),'Color',tColor(k,:));
 
     title(['Diameter: ', num2str(diameters(k)), '\mum']);
     ylabel('#/m^3');
     xlabel('time')
-
+    ylim([ylim_curr]);
 end
 
-figure;
-%Try to fit lognormal distribution to BG
-initPop = [];
-for k=1:size(bg_density_filt,1)
-    
-    densities = bg_density_filt(k,:);
-    
-    if any(isnan(densities))
-        A_bg(k) = NaN;
-        mu_bg(k) = NaN;
-        sigma_bg(k) = NaN;
-    else
-        if k>1
-            initPop = [mu_bg(1:k-1)',sigma_bg(1:k-1)']; % Avoid nans!
-            validRows = ~isnan(initPop(:,1)) & ~isnan(initPop(:,2));
-            initPop = initPop(validRows,:);
-        end
-        
-        [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop, 'mu_LB', log(0.01), 'mu_UB', log(1), 'sig_LB', 0.01, 'sig_UB', 1.5, 'mu_mu', log(0.2), 'mu_sig',5);
-        
-        A_bg(k) = A_t;
-        mu_bg(k) = mu_t;
-        sigma_bg(k) = sigma_t;
-        likelihood_bg(k) = l_t;
-        
-        if mod(k,10) == 0
-            disp(['Done ', num2str(k), '/', num2str(size(data,1))]);
-        end
 
+
+% figure;
+% %Try to fit lognormal distribution to BG
+% initPop = [];
+% for k=1:size(bg_density,2)
+%     
+%     densities = bg_density(:,k);
+%     
+%     if any(isnan(densities))
+%         A_bg(k) = NaN;
+%         mu_bg(k) = NaN;
+%         sigma_bg(k) = NaN;
+%     else
+%         if k>1
+%             initPop = [mu_bg(1:k-1)',sigma_bg(1:k-1)']; % Avoid nans!
+%             validRows = ~isnan(initPop(:,1)) & ~isnan(initPop(:,2));
+%             initPop = initPop(validRows,:);
+%         end
+%         
+%         [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities','fitType','counts','initPop',initPop, 'mu_LB', log(0.01), 'mu_UB', log(1), 'sig_LB', 0.01, 'sig_UB', 1.5, 'mu_mu', log(0.2), 'mu_sig',5);
+%         
+%         A_bg(k) = A_t;
+%         mu_bg(k) = mu_t;
+%         sigma_bg(k) = sigma_t;
+%         likelihood_bg(k) = l_t;
+%         
+%         if mod(k,10) == 0
+%             disp(['Done ', num2str(k), '/', num2str(size(data,2))]);
+%         end
+% 
+%     end
+% 
+% end
+% 
+% figure;
+% subplot(4,1,1);
+% plot(A_bg);
+% title('BG Aerosol number');
+% 
+% subplot(4,1,2);
+% plot(mu_bg);
+% title('BG mu')
+% 
+% subplot(4,1,3);
+% plot(sigma_bg);
+% title('BG sigma')
+% 
+% subplot(4,1,4);
+% plot(likelihood_bg);
+% title('BG log likelihood');
+% 
+% mean_mu = median(mu_bg); % Do unbiased estimate!
+% mean_sig = median(sigma_bg);
+% 
+% initPop = [];
+
+clipNegatives = true;
+
+figure;
+%Try to fit lognormal distribution to foreground
+startK = 1;
+for k=startK:size(data,2)
+    
+    currentLogBinSizes = log(diameters(2:end)) - log(diameters(1:end-1));
+    currentLogBinSizes = currentLogBinSizes';
+    currentData = fg_data(1:end,k);
+    currentData_raw = currentData;
+    currentDiameters = diameters';
+    
+    currentDiameters_av = (currentDiameters(1:end-1)+currentDiameters(2:end))/2; % This assumes that bins are only excluded due the instrument not having them at this stage
+    currentVols = 4/3*pi*(currentDiameters_av/2).^3 * (1e-6)^3;
+        
+    if clipNegatives
+        validSamples = currentData >= 0;
+        
+        m = 1;
+        while ~validSamples(m) && m <= 2
+            m = m+1;
+        end
+        
+        currentData = currentData(m:end);
+        currentData_raw = currentData_raw(m:end);
+        currentLogBinSizes = currentLogBinSizes(m:end);
+        currentDiameters = currentDiameters(m:end);
+        currentDiameters_av = currentDiameters_av(m:end);
+        currentVols = currentVols(m:end);
+        
+        currentData(currentData<0) = 0;
     end
-
-end
-
-figure;
-subplot(4,1,1);
-plot(A_bg);
-title('BG Aerosol number');
-
-subplot(4,1,2);
-plot(mu_bg);
-title('BG mu')
-
-subplot(4,1,3);
-plot(sigma_bg);
-title('BG sigma')
-
-subplot(4,1,4);
-plot(likelihood_bg);
-title('BG log likelihood');
-
-mean_mu = median(mu_bg); % Do unbiased estimate!
-mean_sig = median(sigma_bg);
-
-initPop = [];
-
-figure;
-%Try to fit lognormal distribution
-startK = 285;
-for k=startK:size(data,1)
     
-    densities = fg_density(k,:);
-    %densities_v = data_v_density(k,:);
+    A_t = sum(currentData_raw);
+    A_t_v = sum(currentData_raw .* currentVols);
     
-    if any(isnan(densities))
+    %%%%%
+    
+    if any(isnan(currentData))
         A(k) = NaN;
         mu(k) = NaN;
         sigma(k) = NaN;
@@ -237,9 +220,11 @@ for k=startK:size(data,1)
             initPop = [mu(1:k-1)',sigma(1:k-1)']; % Avoid nans!
             validRows = ~isnan(initPop(:,1)) & ~isnan(initPop(:,2));
             initPop = initPop(validRows,:);
+        else
+            initPop = [];
         end
         
-        [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters, densities,'fitType','counts','initPop',initPop, 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.1, 'sig_UB', 50);
+        [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts','initPop',initPop, 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.1, 'sig_UB', 50);
         
         
         A(k) = A_t;
@@ -249,7 +234,7 @@ for k=startK:size(data,1)
 
     
         if mod(k,10) == 0
-            disp(['Done ', num2str(k), '/', num2str(size(data,1))]);
+            disp(['Done ', num2str(k), '/', num2str(size(data,2))]);
         end
 
     end
