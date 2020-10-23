@@ -237,11 +237,14 @@ end
 
 figure;
 for k=1:size(sample_int_raw_diff,2)
-    figure;
+    %figure;
     currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
     currentData = sample_int_raw_diff(1:end,k);
     currentData_raw = currentData;
     currentDiameters = diameters_2(:,k);
+    
+    currentDiameters_av = (currentDiameters(1:end-1)+currentDiameters(2:end))/2; % This assumes that bins are only excluded due the instrument not having them at this stage
+    currentVols = 4/3*pi*(currentDiameters_av/2).^3 * (1e-6)^3;
         
     if clipNegatives
         validSamples = currentData >= 0;
@@ -252,16 +255,21 @@ for k=1:size(sample_int_raw_diff,2)
         end
         
         currentData = currentData(m:end);
+        currentData_raw = currentData_raw(m:end);
         currentLogBinSizes = currentLogBinSizes(m:end);
         currentDiameters = currentDiameters(m:end);
+        currentDiameters_av = currentDiameters_av(m:end);
+        currentVols = currentVols(m:end);
         
         currentData(currentData<0) = 0;
     end
     
     A_t = sum(currentData_raw);
+    A_t_v = sum(currentData_raw .* currentVols);
     
     [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
     A_diff(k) = A_t;
+    A_v_diff(k) = A_t_v;
     mu_diff(k) = mu_t;
     sigma_diff(k) = sigma_t;
     
@@ -292,16 +300,22 @@ title('A marginal');
 
 subplot(3,2,2);
 scatter(A_diff, mu_diff,'kx','LineWidth',2);
+xlim([0,4e6]);
+ylim([-6,3]);
 xlabel('A');
 ylabel('mu');
 
 subplot(3,2,4);
 scatter(mu_diff,sigma_diff,'kx','LineWidth',2);
+xlim([-6,3]);
+ylim([0,4]);
 xlabel('mu');
 ylabel('sigma');
 
 subplot(3,2,6);
 scatter(A_diff,sigma_diff,'kx','LineWidth',2);
+xlim([0,4e6]);
+ylim([0,4]);
 xlabel('A');
 ylabel('sigma');
 
@@ -346,23 +360,46 @@ for k = 1:size(sample_int_fg_after_all,2)
     diameters_2(:,k) = diameters([valid; true]);
 end
 
-if clipNegatives
-    sample_int_fg_after(sample_int_fg_after<0) = 0;
-end
+% if clipNegatives
+%     sample_int_fg_after(sample_int_fg_after<0) = 0;
+% end
 
 figure;
 for k=1:size(sample_int_fg_after,2)
     currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
-    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_fg_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    currentData = sample_int_fg_after(1:end,k);
+    currentData_raw = currentData;
+    currentDiameters = diameters_2(:,k);
+    
+    currentDiameters_av = (currentDiameters(1:end-1)+currentDiameters(2:end))/2; % This assumes that bins are only excluded due the instrument not having them at this stage
+    currentVols = 4/3*pi*(currentDiameters_av/2).^3 * (1e-6)^3;
+        
+    if clipNegatives
+        validSamples = currentData >= 0;
+        
+        m = 1;
+        while ~validSamples(m) && m <= 2
+            m = m+1;
+        end
+        
+        currentData = currentData(m:end);
+        currentData_raw = currentData_raw(m:end);
+        currentLogBinSizes = currentLogBinSizes(m:end);
+        currentDiameters = currentDiameters(m:end);
+        currentDiameters_av = currentDiameters_av(m:end);
+        currentVols = currentVols(m:end);
+        
+        currentData(currentData<0) = 0;
+    end
+    
+    A_t = sum(currentData_raw);
+    A_t_v = sum(currentData_raw .* currentVols);
+    
+    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
     A_fg_after(k) = A_t;
     mu_fg_after(k) = mu_t;
     sigma_fg_after(k) = sigma_t;
     
-end
-
-if clipNegatives
-    A_fg_after(A_fg_after<0) = 0;
-    %A_fg_after= A_fg_after(A_fg_after>0);
 end
 
 %% fit FG before the event
@@ -404,14 +441,38 @@ for k = 1:size(sample_int_fg_before_all,2)
     diameters_2(:,k) = diameters([valid; true]);
 end
 
-if clipNegatives
-    sample_int_fg_before(sample_int_fg_before<0) = 0;
-end
-
 figure;
 for k=1:size(sample_int_fg_before,2)
     currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
-    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_fg_before(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    currentData = sample_int_fg_before(1:end,k);
+    currentData_raw = currentData;
+    currentDiameters = diameters_2(:,k);
+    
+    currentDiameters_av = (currentDiameters(1:end-1)+currentDiameters(2:end))/2; % This assumes that bins are only excluded due the instrument not having them at this stage
+    currentVols = 4/3*pi*(currentDiameters_av/2).^3 * (1e-6)^3;
+        
+    if clipNegatives
+        validSamples = currentData >= 0;
+        
+        m = 1;
+        while ~validSamples(m) && m <= 2
+            m = m+1;
+        end
+        
+        currentData = currentData(m:end);
+        currentData_raw = currentData_raw(m:end);
+        currentLogBinSizes = currentLogBinSizes(m:end);
+        currentDiameters = currentDiameters(m:end);
+        currentDiameters_av = currentDiameters_av(m:end);
+        currentVols = currentVols(m:end);
+        
+        currentData(currentData<0) = 0;
+    end
+    
+    A_t = sum(currentData_raw);
+    A_t_v = sum(currentData_raw .* currentVols);
+    
+    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
     A_fg_before(k) = A_t;
     mu_fg_before(k) = mu_t;
     sigma_fg_before(k) = sigma_t;
