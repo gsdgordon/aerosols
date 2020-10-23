@@ -12,11 +12,13 @@ close all;
 % Load data
 Y = 2020;
 M = 9;
-D = 30;
+D = 15;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
-T = readtable([datestring,'_aerotrak.xlsx']);
+folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
+
+T = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
 
 opTime = T.DateAndTime;
 location = T.Location;
@@ -25,8 +27,8 @@ avSampleTime = mode(sampleTime); % assumes sample time is not changed during ope
 
 
 % Sync times from different clocks as per the video
-obsCamTime_endo = datetime(Y,M,D,11,09,55);
-endoscopeTime = datetime(Y,M,D,11,24,20);
+obsCamTime_endo = datetime(Y,M,D,14,30,30);
+endoscopeTime = datetime(Y,M,D,17,00,20);
 
 obsCamTime_aerotrak = datetime(Y,M,D,11,10,01);
 aerotrakTime = datetime(Y,M,D,11,22,33) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
@@ -36,8 +38,8 @@ endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
 opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(Y,M,D,11,20,00);
-endTime = datetime(Y,M,D,12,50,00);
+startTime = datetime(Y,M,D,14,20,00);
+endTime = datetime(Y,M,D,17,50,00);
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');

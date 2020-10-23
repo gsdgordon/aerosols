@@ -781,10 +781,14 @@ model_code = textscan(fileID,'%s');
 model_code = model_code{:};
 fclose(fileID);
 
-control.stepsize = 0.1;
-control.delta = 0.99;
+%control.stepsize = 2;
+%conrtol.stepsize_jitter = 10;
+control.adapt_delta = 0.7;
+control.adapt_kappa = 0.9;
+%control.max_tree
 
-sm = StanModel('model_code',model_code, 'model_name', 'lognormal_inf','verbose',true, 'init', initVals, 'chains', 1, 'iter', 5000, 'control', control, 'file_overwrite', true);
+
+sm = StanModel('model_code',model_code, 'model_name', 'lognormal_inf','verbose',true, 'init', initVals, 'chains', 1, 'iter', 10000, 'control', control, 'file_overwrite', true);
 %sm.compile();
 
 % subsequent calls will skip recompilation
