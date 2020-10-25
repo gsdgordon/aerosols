@@ -14,6 +14,9 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     addOptional(p,'sig_UB', 10);
     addOptional(p,'mu_mu', NaN);
     addOptional(p,'mu_sig', NaN);
+    addOptional(p,'w_LB', 0);
+    addOptional(p,'w_UB', 0.1);
+    %addOptional(p
     
     parse(p,varargin{:});
 
@@ -27,8 +30,11 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     mu_UB = log(exp(p.Results.mu_UB)/2);
     sig_LB = p.Results.sig_LB;
     sig_UB = p.Results.sig_UB;
+    w_LB = p.Results.w_LB;
+    w_UB = p.Results.w_UB;
     mu_mu = log(exp(p.Results.mu_mu)/2);
     mu_sig = p.Results.mu_sig;
+    
     
     if isnan(mu_mu) || isnan(mu_sig)
         useNormPrior = false;
@@ -47,7 +53,8 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     end
     
     if isBimodal
-        x0_ref = [0,1,0.1];
+        %x0_ref = [0,1,0.1];
+        x0_ref = [(mu_LB+mu_UB)/2, (sig_LB + sig_UB)/2, 0.1];
     else
         if (size(initPop_d,1) > 0)
             initPop_r = [log(exp(initPop_d(:,1))/2),initPop_d(:,2)];
@@ -117,11 +124,11 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     if isBimodal
         %mu_UB = log(50/2); %D = 0.2, sig = 0.6 is a good fit
         %sig_UB = 10;
-        w_UB = 10;
+        %w_UB = 0.01;
 
         %mu_LB = log(0.05/2);
         %sig_LB = 0.01;
-        w_LB = 0;
+        %w_LB = 0;
         
     else
         %mu_UB = log(1/2); %D = 0.2, sig = 0.6 is a good fit
@@ -138,7 +145,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     %log_prior = @(x) log(normpdf(x(1),log(0.36/2),0.1)); % Prior is on the radius...
     
     if isBimodal
-        log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB)) + log(normpdf(x(3),0,0.1)); % Prior is on the radius...
+        log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB));% + log(normpdf(x(3),0,0.1)); % Prior is on the radius...
     else
         if useNormPrior
             log_prior = @(x) sum(counts)*(log(1/(mu_sig*sqrt(2*pi))) -(x(1) - mu_mu)^2/(2*mu_sig^2)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...

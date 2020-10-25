@@ -115,51 +115,152 @@ for currentIdx = indices'
     avSampleTimes(currentIdx) = avSampleTime;
     [bg_current, fg_current] = splitBGFG(data, avSampleTime, tempValid);
     
+    bg_current_v = bg_current .* repmat(currentVols,1, size(data,2));
+    fg_current_v = fg_current .* repmat(currentVols,1, size(data,2));
+    
     nSizes = size(data,1);
     tColor = lines(nSizes);
 
-    for k=1:nSizes
+    for k=1:nSizes+2
 
-        subplot(nSizes,3,3*(k-1)+1);
-        currentValid = ~isnan(data(k,:));
-        plot(time(currentValid),data(k,currentValid),'Color',tColor(k,:));
-        %hold on;
-        %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+        if (k <= nSizes)
+            subplot(nSizes+2,3,3*(k-1)+1);
+            currentValid = ~isnan(data(k,:));
+            plot(time(currentValid),data(k,currentValid),'Color',tColor(k,:));
+            %hold on;
+            %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
 
-        title(['Diameter: ', num2str(diameters(k)), '\mum']);
-        ylabel('#/m^3');
-        xlabel('time')
-        
-        if currentIdx == indices(1)
-            xline(0,'k:');
+            title(['Diameter: ', num2str(diameters(k)), '\mum']);
+            ylabel('#/m^3');
+            xlabel('time');
+            ylim_curr = ylim;
+            if currentIdx == indices(end)
+                ylim_curr = [-1*max(ylim_curr),max(ylim_curr)];
+                ylim(ylim_curr);
+            end
+
+            if currentIdx == indices(1)
+                xline(0,'k:');
+            end
+            hold on;
+
+            subplot(nSizes+2,3,3*(k-1)+2);
+            currentValid = ~isnan(data(k,:));
+            plot(time(currentValid),bg_current(k,currentValid),'Color',tColor(k,:),'LineStyle',':', 'LineWidth',1);
+
+            title(['Diameter: ', num2str(diameters(k)), '\mum']);
+            ylabel('#/m^3');
+            xlabel('time');
+            ylim(ylim_curr);
+            if currentIdx == indices(1)
+                xline(0,'k:');
+            end
+            hold on;
+
+            subplot(nSizes+2,3,3*(k-1)+3);
+            currentValid = ~isnan(data(k,:));
+            plot(time(currentValid),fg_current(k,currentValid),'Color',tColor(k,:));
+
+            title(['Diameter: ', num2str(diameters(k)), '\mum']);
+            ylabel('#/m^3');
+            xlabel('time');
+            ylim(ylim_curr);
+            if currentIdx == indices(1)
+                xline(0,'k:');
+            end
+            hold on;
+
+            %pause(0.1);
+        else
+            if k== nSizes+1
+                subplot(nSizes+2,3,3*(k-1)+1);
+                currentValid = ~all(isnan(data),1);
+                plot(time(currentValid),nansum(data(:,currentValid),1),'k');
+                %hold on;
+                %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+
+                title(['Total #']);
+                ylabel('#/m^3');
+                xlabel('time');
+                ylim_curr = ylim;
+                ylim_curr = [-1*max(ylim_curr),max(ylim_curr)];
+                ylim(ylim_curr);
+
+                if currentIdx == indices(1)
+                    xline(0,'k:');
+                end
+                hold on;
+
+                subplot(nSizes+2,3,3*(k-1)+2);
+                plot(time(currentValid),nansum(bg_current(:,currentValid),1),'k');
+
+                title(['Total #']);
+                ylabel('#/m^3');
+                xlabel('time');
+                ylim(ylim_curr);
+                if currentIdx == indices(1)
+                    xline(0,'k:');
+                end
+                hold on;
+
+                subplot(nSizes+2,3,3*(k-1)+3);
+                plot(time(currentValid),nansum(fg_current(:,currentValid),1),'k');
+
+                title(['Total #']);
+                ylabel('#/m^3');
+                xlabel('time');
+                ylim(ylim_curr);
+                if currentIdx == indices(1)
+                    xline(0,'k:');
+                end
+                hold on;
+            elseif k == nSizes+2
+                subplot(nSizes+2,3,3*(k-1)+1);
+                currentValid = ~all(isnan(data),1);
+                plot(time(currentValid),nansum(data_v(:,currentValid),1),'k');
+                %hold on;
+                %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+
+                title(['Total vol']);
+                ylabel('vol/m^3');
+                xlabel('time');
+                ylim_curr = ylim;
+                if currentIdx == indices(end)
+                    ylim_curr = [-1*max(ylim_curr),max(ylim_curr)];
+                    ylim(ylim_curr);
+                end
+
+                if currentIdx == indices(1)
+                    xline(0,'k:');
+                end
+                hold on;
+
+                subplot(nSizes+2,3,3*(k-1)+2);
+                plot(time(currentValid),nansum(bg_current_v(:,currentValid),1),'k');
+
+                title(['Total vol']);
+                ylabel('vol/m^3');
+                xlabel('time');
+                ylim(ylim_curr);
+                if currentIdx == indices(1)
+                    xline(0,'k:');
+                end
+                hold on;
+
+                subplot(nSizes+2,3,3*(k-1)+3);
+                plot(time(currentValid),nansum(fg_current_v(:,currentValid),1),'k');
+
+                title(['Total vol']);
+                ylabel('vol/m^3');
+                xlabel('time');
+                ylim(ylim_curr);
+                if currentIdx == indices(1)
+                    xline(0,'k:');
+                end
+                hold on;
+            end
+            
         end
-        hold on;
-        
-        subplot(nSizes,3,3*(k-1)+2);
-        currentValid = ~isnan(data(k,:));
-        plot(time(currentValid),bg_current(k,currentValid),'Color',tColor(k,:),'LineStyle',':', 'LineWidth',1);
-
-        title(['Diameter: ', num2str(diameters(k)), '\mum']);
-        ylabel('#/m^3');
-        xlabel('time')
-        if currentIdx == indices(1)
-            xline(0,'k:');
-        end
-        hold on;
-        
-        subplot(nSizes,3,3*(k-1)+3);
-        currentValid = ~isnan(data(k,:));
-        plot(time(currentValid),fg_current(k,currentValid),'Color',tColor(k,:));
-
-        title(['Diameter: ', num2str(diameters(k)), '\mum']);
-        ylabel('#/m^3');
-        xlabel('time')
-        if currentIdx == indices(1)
-            xline(0,'k:');
-        end
-        hold on;
-        
-        %pause(0.1);
     end
 
     bg(:,:,currentIdx) = bg_current;
@@ -170,160 +271,166 @@ end
 disp('here');
 
 clipNegatives = true; %Negative counts values set to zero
+
+
 %% Raw difference
-rawdiffwindowSize = 50;
-buffer = 20;
-windowStart = -5; %Should really be 0 for all cases
+calcRawDiff = true;
 
-sampleValid = time >= windowStart & time < (windowStart + rawdiffwindowSize + buffer);
-sample_preInt = raw(:,sampleValid,:);
-sample_int_raw_after_all = zeros(size(raw,1),size(raw,3));
+if calcRawDiff
+    rawdiffwindowSize = 50;
+    buffer = 20;
+    windowStart = -5; %Should really be 0 for all cases
 
-for k = 1:size(sample_preInt,3)
-    cumdt = 0;
-    cumdd = zeros(size(sample_preInt,1),1);
-    for kk=2:size(sample_preInt,2) % start from 2 to exclude the first point as data is cumulative after the event
-        cumdt = cumdt + 1;
-        
-        if ~all(isnan(sample_preInt(:,kk,k)))
-            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
-            
-            cumdt = 0;
+    sampleValid = time >= windowStart & time < (windowStart + rawdiffwindowSize + buffer);
+    sample_preInt = raw(:,sampleValid,:);
+    sample_int_raw_after_all = zeros(size(raw,1),size(raw,3));
+
+    for k = 1:size(sample_preInt,3)
+        cumdt = 0;
+        cumdd = zeros(size(sample_preInt,1),1);
+        for kk=2:size(sample_preInt,2) % start from 2 to exclude the first point as data is cumulative after the event
+            cumdt = cumdt + 1;
+
+            if ~all(isnan(sample_preInt(:,kk,k)))
+                cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+
+                cumdt = 0;
+            end
+
         end
-       
+        sample_int_raw_after_all(:,k) = cumdd;
     end
-    sample_int_raw_after_all(:,k) = cumdd;
-end
 
-windowEnd = windowStart; %Should really be 0 for all cases
+    windowEnd = windowStart; %Should really be 0 for all cases
 
-sampleValid = time >= (windowStart- rawdiffwindowSize - buffer) & time < (windowEnd);
-sample_preInt = raw(:,sampleValid,:);
-sample_int_raw_before_all = zeros(size(raw,1),size(raw,3));
+    sampleValid = time >= (windowStart- rawdiffwindowSize - buffer) & time < (windowEnd);
+    sample_preInt = raw(:,sampleValid,:);
+    sample_int_raw_before_all = zeros(size(raw,1),size(raw,3));
 
-for k = 1:size(sample_preInt,3)
-    cumdt = 0;
-    cumdd = zeros(size(sample_preInt,1),1);
-    for kk=1:size(sample_preInt,2)
-        cumdt = cumdt + 1;
-        
-        if ~all(isnan(sample_preInt(:,kk,k)))
-            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
-            
-            cumdt = 0;
+    for k = 1:size(sample_preInt,3)
+        cumdt = 0;
+        cumdd = zeros(size(sample_preInt,1),1);
+        for kk=1:size(sample_preInt,2)
+            cumdt = cumdt + 1;
+
+            if ~all(isnan(sample_preInt(:,kk,k)))
+                cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+
+                cumdt = 0;
+            end
+
         end
-       
+        sample_int_raw_before_all(:,k) = cumdd;
+
     end
-    sample_int_raw_before_all(:,k) = cumdd;
-    
-end
 
-sample_int_raw_diff_all = sample_int_raw_after_all - sample_int_raw_before_all;
+    sample_int_raw_diff_all = sample_int_raw_after_all - sample_int_raw_before_all;
 
-% Diameter array per each data set
-nValid = nnz(~isnan(sample_int_raw_diff_all(:,1)));
+    % Diameter array per each data set
+    nValid = nnz(~isnan(sample_int_raw_diff_all(:,1)));
 
-sample_int_raw_diff = zeros(nValid,size(sample_int_raw_diff_all,2));
-diameters_2 = zeros(size(sample_int_raw_diff,1)+1, size(sample_int_raw_diff,2));
+    sample_int_raw_diff = zeros(nValid,size(sample_int_raw_diff_all,2));
+    diameters_2 = zeros(size(sample_int_raw_diff,1)+1, size(sample_int_raw_diff,2));
 
-for k = 1:size(sample_int_raw_diff_all,2)
-    temp = sample_int_raw_diff_all(:,k);
-    valid = ~isnan(temp);
-    
-    sample_int_raw_diff(:,k) = temp(valid);
-    diameters_2(:,k) = diameters([valid; true]);
-end
+    for k = 1:size(sample_int_raw_diff_all,2)
+        temp = sample_int_raw_diff_all(:,k);
+        valid = ~isnan(temp);
+
+        sample_int_raw_diff(:,k) = temp(valid);
+        diameters_2(:,k) = diameters([valid; true]);
+    end
 
 
-figure;
-for k=1:size(sample_int_raw_diff,2)
-    %figure;
-    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
-    currentData = sample_int_raw_diff(1:end,k);
-    currentData_raw = currentData;
-    currentDiameters = diameters_2(:,k);
-    
-    currentDiameters_av = (currentDiameters(1:end-1)+currentDiameters(2:end))/2; % This assumes that bins are only excluded due the instrument not having them at this stage
-    currentVols = 4/3*pi*(currentDiameters_av/2).^3 * (1e-6)^3;
-        
-    if clipNegatives
-        validSamples = currentData >= 0;
-        
-        m = 1;
-        while ~validSamples(m) && m <= 2
-            m = m+1;
+    figure;
+    for k=1:size(sample_int_raw_diff,2)
+        %figure;
+        currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+        currentData = sample_int_raw_diff(1:end,k);
+        currentData_raw = currentData;
+        currentDiameters = diameters_2(:,k);
+
+        currentDiameters_av = (currentDiameters(1:end-1)+currentDiameters(2:end))/2; % This assumes that bins are only excluded due the instrument not having them at this stage
+        currentVols = 4/3*pi*(currentDiameters_av/2).^3 * (1e-6)^3;
+
+        if clipNegatives
+            validSamples = currentData >= 0;
+
+            m = 1;
+            while ~validSamples(m) && m <= 2
+                m = m+1;
+            end
+
+            currentData = currentData(m:end);
+            currentData_raw = currentData_raw(m:end);
+            currentLogBinSizes = currentLogBinSizes(m:end);
+            currentDiameters = currentDiameters(m:end);
+            currentDiameters_av = currentDiameters_av(m:end);
+            currentVols = currentVols(m:end);
+
+            currentData(currentData<0) = 0;
         end
-        
-        currentData = currentData(m:end);
-        currentData_raw = currentData_raw(m:end);
-        currentLogBinSizes = currentLogBinSizes(m:end);
-        currentDiameters = currentDiameters(m:end);
-        currentDiameters_av = currentDiameters_av(m:end);
-        currentVols = currentVols(m:end);
-        
-        currentData(currentData<0) = 0;
+
+        A_t = sum(currentData_raw);
+        A_t_v = sum(currentData_raw .* currentVols);
+
+        [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+        A_diff(k) = A_t;
+        A_v_diff(k) = A_t_v;
+        mu_diff(k) = mu_t;
+        sigma_diff(k) = sigma_t;
+
     end
-    
-    A_t = sum(currentData_raw);
-    A_t_v = sum(currentData_raw .* currentVols);
-    
-    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
-    A_diff(k) = A_t;
-    A_v_diff(k) = A_t_v;
-    mu_diff(k) = mu_t;
-    sigma_diff(k) = sigma_t;
-    
+
+    % if clipNegatives
+    %     A_fg_after(A_fg_after<0) = 0;
+    %     %A_fg_after= A_fg_after(A_fg_after>0);
+    % end
+
+
+    figure;
+    subplot(3,2,1);
+    scatter(mu_diff,zeros(size(mu_diff)),'kx','LineWidth',2);
+    xlabel('mu');
+    title('mu marginal');
+
+    subplot(3,2,3);
+    scatter(sigma_diff,zeros(size(sigma_diff)),'kx','LineWidth',2);
+    xlabel('sigma');
+    title('sigma marginal');
+
+
+    subplot(3,2,5);
+    scatter(A_diff,zeros(size(A_diff)),'kx','LineWidth',2);
+    xlabel('A');
+    title('A marginal');
+
+    subplot(3,2,2);
+    scatter(A_diff, mu_diff,'kx','LineWidth',2);
+    xlim([0,4e6]);
+    ylim([-6,3]);
+    xlabel('A');
+    ylabel('mu');
+
+    subplot(3,2,4);
+    scatter(mu_diff,sigma_diff,'kx','LineWidth',2);
+    xlim([-6,3]);
+    ylim([0,4]);
+    xlabel('mu');
+    ylabel('sigma');
+
+    subplot(3,2,6);
+    scatter(A_diff,sigma_diff,'kx','LineWidth',2);
+    xlim([0,4e6]);
+    ylim([0,4]);
+    xlabel('A');
+    ylabel('sigma');
 end
-
-% if clipNegatives
-%     A_fg_after(A_fg_after<0) = 0;
-%     %A_fg_after= A_fg_after(A_fg_after>0);
-% end
-
-
-figure;
-subplot(3,2,1);
-scatter(mu_diff,zeros(size(mu_diff)),'kx','LineWidth',2);
-xlabel('mu');
-title('mu marginal');
-
-subplot(3,2,3);
-scatter(sigma_diff,zeros(size(sigma_diff)),'kx','LineWidth',2);
-xlabel('sigma');
-title('sigma marginal');
-
-
-subplot(3,2,5);
-scatter(A_diff,zeros(size(A_diff)),'kx','LineWidth',2);
-xlabel('A');
-title('A marginal');
-
-subplot(3,2,2);
-scatter(A_diff, mu_diff,'kx','LineWidth',2);
-xlim([0,4e6]);
-ylim([-6,3]);
-xlabel('A');
-ylabel('mu');
-
-subplot(3,2,4);
-scatter(mu_diff,sigma_diff,'kx','LineWidth',2);
-xlim([-6,3]);
-ylim([0,4]);
-xlabel('mu');
-ylabel('sigma');
-
-subplot(3,2,6);
-scatter(A_diff,sigma_diff,'kx','LineWidth',2);
-xlim([0,4e6]);
-ylim([0,4]);
-xlabel('A');
-ylabel('sigma');
 
 %% fit FG after the event
 % Integrate to get in the same window
 fgwindowSize = 50;
 buffer = 20;
-windowStart = -5; %Should really be 0 for all cases
+windowStart = -1; %Should really be 0 for all cases
 
 sampleValid = time >= windowStart & time < (windowStart + fgwindowSize + buffer);
 sample_preInt = fg(:,sampleValid,:);
@@ -395,10 +502,14 @@ for k=1:size(sample_int_fg_after,2)
     A_t = sum(currentData_raw);
     A_t_v = sum(currentData_raw .* currentVols);
     
-    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
     A_fg_after(k) = A_t;
     mu_fg_after(k) = mu_t;
     sigma_fg_after(k) = sigma_t;
+    
+    if k==4
+        a = 1;
+    end
     
 end
 
@@ -472,7 +583,7 @@ for k=1:size(sample_int_fg_before,2)
     A_t = sum(currentData_raw);
     A_t_v = sum(currentData_raw .* currentVols);
     
-    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+    [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
     A_fg_before(k) = A_t;
     mu_fg_before(k) = mu_t;
     sigma_fg_before(k) = sigma_t;
@@ -492,7 +603,7 @@ end
 % Integrate to get in the same window
 windowSize = 80;
 buffer = 20;
-windowStart = -5; %Should really be 0 for all cases
+windowStart = -1; %Should really be 0 for all cases
 
 sampleValid = time >= windowStart & time < (windowStart + windowSize + buffer);
 sample_preInt = bg(:,sampleValid,:);
@@ -532,7 +643,7 @@ end
 figure;
 for k=1:size(sample_int_bg_after,2)
     currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
-    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_bg_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(0.2), 'sig_LB', 0.1, 'sig_UB', 50);
+    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_bg_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(0.2), 'sig_LB', 0.1, 'sig_UB', 50);
     A_bg_after(k) = A_t;
     mu_bg_after(k) = mu_t;
     sigma_bg_after(k) = sigma_t;
@@ -582,12 +693,166 @@ end
 figure;
 for k=1:size(sample_int_bg_before,2)
     currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
-    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_bg_before(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.01), 'mu_UB', log(0.2), 'sig_LB', 0.1, 'sig_UB', 50);
+    [A_t, mu_t, sigma_t, l_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_bg_before(1:end,k)./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(0.2), 'sig_LB', 0.1, 'sig_UB', 50);
     A_bg_before(k) = A_t;
     mu_bg_before(k) = mu_t;
     sigma_bg_before(k) = sigma_t;
     
 end
+
+%% Now try to fit a bimodal distribution to the 'after' data
+% Integrate to get in the same window
+windowSize = 50;
+buffer = 20;
+windowStart = 0; %Should really be 0 for all cases
+
+sampleValid = time >= windowStart & time < (windowStart + windowSize + buffer);
+sample_preInt = raw(:,sampleValid,:);
+sample_int_raw_after_all = zeros(size(raw,1),size(raw,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=2:size(sample_preInt,2) % start from 2 to exclude the first point as data is cumulative after the event
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_raw_after_all(:,k) = cumdd;
+    
+end
+
+% Diameter array per each data set
+nValid = nnz(~isnan(sample_int_raw_after_all(:,1)));
+
+sample_int_raw_after = zeros(nValid,size(sample_int_raw_after_all,2));
+diameters_2 = zeros(size(sample_int_raw_after,1)+1, size(sample_int_raw_after,2));
+
+for k = 1:size(sample_int_bg_after_all,2)
+    temp = sample_int_raw_after_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_raw_after(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+
+figure;
+relative_mu_bounds = [-0.1,0.1];
+relative_sig_bounds = [0.8, 1.2];
+for k=1:size(sample_int_raw_after,2)
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    
+    mu_bg_est = mu_bg_after(k);
+    sigma_bg_est = sigma_bg_after(k);
+    %mu_fg_est = mu_fg_after(k);
+    %sigma_fg_est = sigma_fg_after(k);
+    mu_fg_est = mu_diff(k);
+    sigma_fg_est = sigma_diff(k);
+    
+    A_1 = A_bg_after(k)/(normcdf(log(diameters_2(end,k)),mu_bg_est, sigma_bg_est) - normcdf(log(diameters_2(1,k)),mu_bg_est, sigma_bg_est));
+    A_2 = A_fg_after(k)/(normcdf(log(diameters_2(end,k)),mu_fg_est, sigma_fg_est) - normcdf(log(diameters_2(1,k)),mu_fg_est, sigma_fg_est));
+    w_est = abs(A_2) / abs(A_1);
+    
+    [A_t, mu_t, sigma_t, l_t, w_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_raw_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'bimodal', true, 'mu_LB', mu_fg_est+relative_mu_bounds(1), 'mu_UB', min(mu_fg_est+relative_mu_bounds(2),4), 'sig_LB', sigma_fg_est*relative_sig_bounds(1), 'sig_UB', sigma_fg_est*relative_sig_bounds(2), 'bg_mu', mu_bg_est, 'bg_sig', sigma_bg_est, 'w_UB', w_est*100);
+    A_after(k) = A_t;
+    mu_after(k) = mu_t;
+    sigma_after(k) = sigma_t;
+    w_after(k) = w_t;
+    
+    if mu_t > 4
+        a = 1;
+    end
+    
+end
+
+%% Fit bimodal to before data
+buffer = 20;
+windowEnd = windowStart; %Should really be 0 for all cases
+
+sampleValid = time >= (windowStart- windowSize - buffer) & time < (windowEnd);
+sample_preInt = fg(:,sampleValid,:);
+sample_int_raw_before_all = zeros(size(fg,1),size(fg,3));
+
+for k = 1:size(sample_preInt,3)
+    cumdt = 0;
+    cumdd = zeros(size(sample_preInt,1),1);
+    for kk=1:size(sample_preInt,2)
+        cumdt = cumdt + 1;
+        
+        if ~all(isnan(sample_preInt(:,kk,k)))
+            cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+            
+            cumdt = 0;
+        end
+       
+    end
+    sample_int_raw_before_all(:,k) = cumdd;
+    
+end
+
+% Diameter array per each data set
+nValid = nnz(~isnan(sample_int_raw_before_all(:,1)));
+
+sample_int_raw_before = zeros(nValid,size(sample_int_raw_before_all,2));
+diameters_2 = zeros(size(sample_int_raw_before,1)+1, size(sample_int_raw_before,2));
+
+for k = 1:size(sample_int_bg_before_all,2)
+    temp = sample_int_raw_before_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_raw_before(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+for k = 1:size(sample_int_bg_before_all,2)
+    temp = sample_int_raw_before_all(:,k);
+    valid = ~isnan(temp);
+    
+    sample_int_raw_before(:,k) = temp(valid);
+    diameters_2(:,k) = diameters([valid; true]);
+end
+
+figure;
+relative_mu_bounds = [-0.1,0.1];
+relative_sig_bounds = [0.95, 1.05];
+for k=1:size(sample_int_raw_before,2)
+    currentLogBinSizes = log(diameters_2(2:end,k)) - log(diameters_2(1:end-1,k));
+    
+    mu_bg_est = mu_bg_before(k);
+    sigma_bg_est = sigma_bg_before(k);
+    mu_fg_est = mu_after(k);
+    sigma_fg_est = sigma_after(k);
+    
+    A_1 = A_bg_before(k)/(normcdf(log(diameters_2(end,k)),mu_bg_est, sigma_bg_est) - normcdf(log(diameters_2(1,k)),mu_bg_est, sigma_bg_est));
+    A_2 = A_fg_before(k)/(normcdf(log(diameters_2(end,k)),mu_fg_est, sigma_fg_est) - normcdf(log(diameters_2(1,k)),mu_fg_est, sigma_fg_est));
+    w_est = abs(A_2) / abs(A_1);
+    
+    [A_t, mu_t, sigma_t, l_t, w_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_raw_before(1:end,k)./currentLogBinSizes)','fitType','counts', 'bimodal', true, 'mu_LB', mu_fg_est+relative_mu_bounds(1), 'mu_UB', min(mu_fg_est+relative_mu_bounds(2),4), 'sig_LB', sigma_fg_est*relative_sig_bounds(1), 'sig_UB', sigma_fg_est*relative_sig_bounds(2), 'bg_mu', mu_bg_est, 'bg_sig', sigma_bg_est, 'w_UB', w_est*4);
+    A_before(k) = A_t;
+    mu_before(k) = mu_t;
+    sigma_before(k) = sigma_t;
+    w_before(k) = w_t;
+    
+    if mu_t > 4
+        a = 1;
+    end
+    
+end
+
+figure;
+scatter(w_before, w_after);
+xlabel('w');
+ylabel('w');
+axis equal;
+
+test = (w_after./w_before);
+
+a = 1;
+
 %% Plot
 % subplot(3,2,1)
 % plot(A_fg_before,A_fg_after,'x');
@@ -595,7 +860,7 @@ end
 % plot(A_fg_before,A_fg_before);
 % title('Amount of aerosol');
 % 
-% subplot(3,2,3)
+% subplot(3,2,3)[A_t, mu_t, sigma_t, l_t, w_t] = fitAerosolDist(diameters_2(:,k).', (sample_int_raw_after(1:end,k)./currentLogBinSizes)','fitType','counts', 'bimodal', true, 'mu_LB', mu_fg_est-0.5, 'mu_UB', mu_fg_est+0.5, 'sig_LB', 0.9*sigma_fg_est, 'sig_UB', 1.1*sigma_fg_est, 'bg_mu', mu_bg_est, 'bg_sig', sigma_bg_est);
 % plot(mu_fg_before,mu_fg_after,'x');
 % hold on;
 % plot(mu_fg_before,mu_fg_before);
@@ -634,8 +899,10 @@ end
 % A_fg_after_phat = gamfit(A_fg_after);
 % A_bg_before_phat = gamfit(A_bg_before);
 % A_bg_after_phat = gamfit(A_bg_after);
-A_fg_before_phat = gamfit(A_fg_before);
-A_fg_after_phat = gamfit(A_fg_after);
+% A_fg_before_phat = gamfit(A_fg_before);
+% A_fg_after_phat = gamfit(A_fg_after);
+[A_fg_before_mu, A_fg_before_sig] = normfit(A_fg_before);
+[A_fg_after_mu, A_fg_after_sig] = normfit(A_fg_after);
 A_bg_before_phat = lognfit(A_bg_before);
 A_bg_after_phat = lognfit(A_bg_after);
 
@@ -663,7 +930,7 @@ sigma_bg_after_phat = gamfit(sigma_bg_after);
 %sigma_bg_diff_phat = gamfit(sigma_bg_after - sig_bg_before);
 
 plot_A_bg = linspace(0,2e8,500);
-plot_A_fg = linspace(0,1e6,500);
+plot_A_fg = linspace(-1e5,3e6,500);
 plot_mu = linspace(-5,1,500);
 plot_sig = linspace(0,2,500);
 
@@ -699,11 +966,13 @@ xlabel('diameter (\mum)');
 legend('before','','after');
 
 subplot(6,1,3);
-plot((plot_A_fg), gampdf(plot_A_fg,A_fg_before_phat(1), A_fg_before_phat(2)), 'b');
+plot((plot_A_fg), normpdf(plot_A_fg,A_fg_before_mu, A_fg_before_sig), 'b');
+%plot((plot_A_fg), gampdf(plot_A_fg,A_fg_before_phat(1), A_fg_before_phat(2)), 'b');
 %plot((plot_A_fg), lognpdf(plot_A_fg,A_fg_before_phat(1), A_fg_before_phat(2)));
 hold on;
 scatter(A_fg_before,zeros(size(A_fg_before)),'bx','LineWidth',2);
-plot((plot_A_fg), gampdf(plot_A_fg,A_fg_after_phat(1), A_fg_after_phat(2)),'r');
+plot((plot_A_fg), normpdf(plot_A_fg,A_fg_after_mu, A_fg_after_sig),'r');
+%plot((plot_A_fg), gampdf(plot_A_fg,A_fg_after_phat(1), A_fg_after_phat(2)),'r');
 %plot((plot_A_fg), lognpdf(plot_A_fg,A_fg_after_phat(1), A_fg_after_phat(2)));
 scatter(A_fg_after,zeros(size(A_fg_after)),'rx','LineWidth',2);
 %xlim([min(plot_A_fg),max(plot_A_fg)]);
@@ -745,6 +1014,25 @@ scatter(A_bg_after,zeros(size(A_bg_after)),'rx','LineWidth',2);
 title('A bg dist');
 legend('before','','after');
 
+
+figure;
+subplot(3,1,1);
+scatter(mu_fg_before, mu_fg_after,'kx','LineWidth',2);
+xlabel('mu before');
+ylabel('mu after');
+axis equal;
+
+subplot(3,1,2);
+scatter(A_fg_before,A_fg_after,'kx','LineWidth',2);
+xlabel('A before');
+ylabel('A after');
+axis equal;
+
+subplot(3,1,3);
+scatter(sigma_fg_before,sigma_fg_after,'kx','LineWidth',2);
+xlabel('sigma before');
+ylabel('sigma after');
+axis equal;
 
 
 %% Now run STAN code
