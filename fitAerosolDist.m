@@ -16,6 +16,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     addOptional(p,'mu_sig', NaN);
     addOptional(p,'w_LB', 0);
     addOptional(p,'w_UB', 0.1);
+    addOptional(p,'tubeCorrection', []);
     %addOptional(p
     
     parse(p,varargin{:});
@@ -24,6 +25,12 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     isBimodal = p.Results.bimodal;
     bg_mu = p.Results.bg_mu;
     bg_sigma = p.Results.bg_sigma;
+    tubeCorrection = p.Results.tubeCorrection;
+    if ~isempty(tubeCorrection)
+        hasTubeCorrection = true;
+    else
+        hasTubeCorrection = false;
+    end
     
     
     mu_LB = log(exp(p.Results.mu_LB)/2);
@@ -165,7 +172,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
 %                         + counts(6)*log(intFun([log_radii(6),log_radii(7),x(1),x(2)]))...
 %                         + log_prior(x));
                     
-        objFun = @(x) -1* (normApproxMNpdf(x,log_radii,counts,intFun))...
+        objFun = @(x) -1* (normApproxMNpdf(x,log_radii,counts,intFun, 'tubeCorrection', tubeCorrection))...
                         - log_prior(x);
                     
         objFun_dir = @(x) log(0*(densities(1) - x(3)*(normcdf(log_radii(2),x(1),x(2)) - normcdf(log_radii(1),x(1),x(2))))^2 ...
@@ -175,7 +182,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
                          +(densities(5) - x(3)*(normcdf(log_radii(6),x(1),x(2)) - normcdf(log_radii(5),x(1),x(2))))^2 ...
                          +(densities(6) - x(3)*(normcdf(log_radii(7),x(1),x(2)) - normcdf(log_radii(6),x(1),x(2))))^2);
                     
-        log_likelihood = @(x) (normApproxMNpdf(x,log_radii,counts,intFun));
+        log_likelihood = @(x) (normApproxMNpdf(x,log_radii,counts,intFun, 'tubeCorrection', tubeCorrection));
     else
         objFun = @(x) -1*(counts(1)*log(intFun([radii(1),radii(2),x(1),x(2)]))...
                         + counts(2)*log(intFun([radii(2),radii(3),x(1),x(2)]))...
