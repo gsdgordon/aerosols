@@ -12,14 +12,15 @@ close all;
 % Load data
 Y = 2020;
 M = 10;
-D = 22;
+D = 30;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
 %folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
 folder = ['/home/george/Desktop/'];
 
-T = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
+%T = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
+T = readtable('/home/george/Desktop/20201030_aerotrak.xlsx');
 
 opTime = T.DateAndTime;
 location = T.Location;
@@ -28,19 +29,19 @@ avSampleTime = mode(sampleTime); % assumes sample time is not changed during ope
 
 
 % Sync times from different clocks as per the video
-obsCamTime_endo = datetime(Y,M,D,14,30,30);
-endoscopeTime = datetime(Y,M,D,17,00,20);
+obsCamTime_endo = datetime(Y,M,D,09,29,27);
+endoscopeTime = datetime(Y,M,D,09,44,41);
 
-obsCamTime_aerotrak = datetime(Y,M,D,11,10,01);
-aerotrakTime = datetime(Y,M,D,11,22,33) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
+obsCamTime_aerotrak = datetime(Y,M,D,09,29,31);
+aerotrakTime = datetime(Y,M,D,08,38,57) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
 
 aeroOffsetTime = aerotrakTime - obsCamTime_aerotrak;
 endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
 opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(Y,M,D,10,12,00);
-endTime = datetime(Y,M,D,18,22,00);
+startTime = datetime(Y,M,D,11,46,00);
+endTime = datetime(Y,M,D,12,01,00);
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
@@ -55,7 +56,7 @@ airVol = T.Volume_L_;
 % bins
 maxDiameter = 25; % in microns - this is from the spec sheet
 diameters = [T.Ch1Size__m_(1),T.Ch2Size__m_(1),T.Ch3Size__m_(1),T.Ch4Size__m_(1),T.Ch5Size__m_(1),T.Ch6Size__m_(1), maxDiameter];
-diameters_av = (diameters(1:6)+diameters(2:7))/2; % Mean diameter in each bin
+diameters_av = (diameters(1:end-1)+diameters(2:end))/2; % Mean diameter in each bin
 
 % The actual counts in each bin
 data = [T.Ch1Diff___,T.Ch2Diff___,T.Ch3Diff___,T.Ch4Diff___,T.Ch5Diff___,T.Ch6Diff___];
@@ -71,6 +72,8 @@ bin_sizes = diameters(2:7) - diameters(1:6);
 log_bin_sizes = log(diameters(2:7)) - log(diameters(1:6));
 
 data_v = data .* repmat(vols',1,size(data,2));
+bg_data_v = bg_data .* repmat(vols',1,size(data,2));
+fg_data_v = fg_data .* repmat(vols',1,size(data,2));
 
 % Densities so that a probability density approach can be used
 data_v_density = data_v ./ repmat(log_bin_sizes',1,size(data,2)); %Try using log binsizes
@@ -84,38 +87,146 @@ fg_density = fg_data ./ repmat(log_bin_sizes',1,size(data,2));
 nSizes = size(data,1);
 tColor = lines(nSizes);
 
+%%
+useTubeCorrection = true;
 
-% Plot smoothed
-figure;
-for k=1:nSizes
-    
-    subplot(nSizes,3,3*(k-1)+1);
-    plot(opTime2,data_density(k,:),'Color',tColor(k,:));
-    hold on;
-    plot(opTime2,bg_density(k,:),'Color','black','LineStyle',':', 'LineWidth',2);
-    title(['Diameter: ', num2str(diameters(k)), '\mum']);
-    ylabel('#/m^3');
-    xlabel('time')
-    ylim_curr = ylim;
-   
-    subplot(nSizes,3,3*(k-1)+2);
-    plot(opTime2,bg_density(k,:),'Color',tColor(k,:),'LineStyle',':');
+if useTubeCorrection
+    tubeCorrection_tab = readtable('/home/george/Desktop/TubeBendCorrection.csv');
+    tubeCorrection = table2array(tubeCorrection_tab);
 
-    title(['Diameter: ', num2str(diameters(k)), '\mum']);
-    ylabel('#/m^3');
-    xlabel('time')
-    ylim([ylim_curr]);
-    
-    subplot(nSizes,3,3*(k-1)+3);
-    plot(opTime2,fg_density(k,:),'Color',tColor(k,:));
+    for k=1:nSizes
+        correctionIdx = find(diameters(k) == tubeCorrection(:,1));
 
-    title(['Diameter: ', num2str(diameters(k)), '\mum']);
-    ylabel('#/m^3');
-    xlabel('time')
-    ylim([ylim_curr]);
+        correctionVal(k) = tubeCorrection(correctionIdx,2);
+    end
+else
+    correctionVal = zeros(1,nSizes);
 end
 
 
+%% Plot smoothed
+figure;
+for k=1:nSizes+2
+
+    if (k <= nSizes)
+
+        subplot(nSizes+2,3,3*(k-1)+1);
+        plot(opTime2,data_density(k,:)/(1-correctionVal(k)),'Color',tColor(k,:));
+        hold on;
+        plot(opTime2,bg_density(k,:)/(1-correctionVal(k)),'Color','black','LineStyle',':', 'LineWidth',2);
+        title(['Diameter: ', num2str(diameters(k)), '\mum']);
+        ylabel('#/m^3');
+        xlabel('time')
+        ylim_curr = ylim;
+        ylim_curr = 1.0*[-1*max(ylim_curr),max(ylim_curr)];
+        ylim(ylim_curr);
+
+        subplot(nSizes+2,3,3*(k-1)+2);
+        plot(opTime2,bg_density(k,:)/(1-correctionVal(k)),'Color',tColor(k,:),'LineStyle',':');
+
+        title(['Diameter: ', num2str(diameters(k)), '\mum']);
+        ylabel('#/m^3');
+        xlabel('time')
+        ylim([ylim_curr]);
+
+        subplot(nSizes+2,3,3*(k-1)+3);
+        plot(opTime2,fg_density(k,:)/(1-correctionVal(k)),'Color',tColor(k,:));
+
+        title(['Diameter: ', num2str(diameters(k)), '\mum']);
+        ylabel('#/m^3');
+        xlabel('time')
+        ylim([ylim_curr]);
+        
+    elseif k== nSizes+1
+        subplot(nSizes+2,3,3*(k-1)+1);
+        currentValid = ~all(isnan(data),1);
+        plot(opTime2,nansum(data./repmat(1-correctionVal',1,size(data,2)),1),'k');
+        hold on;
+        plot(opTime2,nansum(bg_data,1),'Color','black','LineStyle',':', 'LineWidth',2);
+        
+        title(['Total #']);
+        ylabel('#/m^3');
+        xlabel('time');
+        ylim_curr = ylim;
+        ylim_curr = [-1*max(ylim_curr),max(ylim_curr)];
+        ylim(ylim_curr);
+
+        subplot(nSizes+2,3,3*(k-1)+2);
+        plot(opTime2,nansum(bg_data./repmat(1-correctionVal',1,size(data,2)),1),'k');
+        title(['Total #']);
+        ylabel('#/m^3');
+        xlabel('time');
+        ylim(ylim_curr);
+
+
+        subplot(nSizes+2,3,3*(k-1)+3);
+        plot(opTime2,nansum(fg_data./repmat(1-correctionVal',1,size(data,2)),1),'k');
+
+        title(['Total #']);
+        ylabel('#/m^3');
+        xlabel('time');
+        ylim(ylim_curr);
+    elseif k == nSizes+2
+        subplot(nSizes+2,3,3*(k-1)+1);
+        currentValid = ~all(isnan(data),1);
+        plot(opTime2,nansum(data_v./repmat(1-correctionVal',1,size(data,2)),1),'k');
+        hold on;
+        plot(opTime2,nansum(bg_data_v./repmat(1-correctionVal',1,size(data,2)),1),'Color','black','LineStyle',':', 'LineWidth',2);
+        
+        title(['Total vol']);
+        ylabel('vol/m^3');
+        xlabel('time');
+        ylim_curr = ylim;
+        ylim_curr = [-1*max(ylim_curr),max(ylim_curr)];
+        ylim(ylim_curr);
+
+        subplot(nSizes+2,3,3*(k-1)+2);
+        plot(opTime2,nansum(bg_data_v./repmat(1-correctionVal',1,size(data,2)),1),'k');
+        title(['Total vol']);
+        ylabel('vol/m^3');
+        xlabel('time');
+        ylim(ylim_curr);
+
+
+        subplot(nSizes+2,3,3*(k-1)+3);
+        plot(opTime2,nansum(fg_data_v./repmat(1-correctionVal',1,size(data,2)),1),'k');
+
+        title(['Total vol']);
+        ylabel('vol/m^3');
+        xlabel('time');
+        ylim(ylim_curr);
+    end
+end
+
+for k=1:nSizes+2
+    for l=1:3
+        subplot(nSizes+2,3,3*(k-1)+l);
+        % Patient 1
+%         xline(datetime(2020,10,30,10,11,22),'k--','e');
+%         xline(datetime(2020,10,30,10,11,29),'k--','m');
+%         xline(datetime(2020,10,30,9,59,39),'k--','sp');
+%         xline(datetime(2020,10,30,10,00,46),'k--','mv');
+%         xline(datetime(2020,10,30,10,03,39),'k--','i');
+
+        
+        %Patient 2
+        xline(datetime(2020,10,30,12,00,44),'k--','e');
+        xline(datetime(2020,10,30,12,00,50),'k--','m');
+        xline(datetime(2020,10,30,11,48,00),'k--','sp');
+        xline(datetime(2020,10,30,11,50,35),'k--','mv');
+        xline(datetime(2020,10,30,11,52,15),'k--','i');
+        
+        % Patient 3
+%         xline(datetime(2020,10,30,13,00,17),'k--','e');
+%         xline(datetime(2020,10,30,12,45,28),'k--','sp');
+%         xline(datetime(2020,10,30,12,47,22),'k--','mv');
+%         xline(datetime(2020,10,30,13,00,38),'k--','m');
+%         xline(datetime(2020,10,30,13,01,00),'k--','mv');
+%         xline(datetime(2020,10,30,12,49,46),'k--','i');
+    end
+end
+
+%save('cond4.mat','data', 'diameters', 'opTime2','avSampleTime');
 
 % figure;
 % %Try to fit lognormal distribution to BG

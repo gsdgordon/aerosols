@@ -1,12 +1,28 @@
 
-function prob = normApproxMNpdf(x,log_radii, counts, intFun)
+function prob = normApproxMNpdf(x,log_radii, counts, intFun, varargin)
+
+    p = inputParser;
+    addOptional(p,'tubeCorrection',[]);
+    
+    parse(p,varargin{:});
+
+    tubeCorrection = p.Results.tubeCorrection;
+    if ~isempty(tubeCorrection)
+        hasTubeCorrection = true;
+    else
+        hasTubeCorrection = false;
+    end
 
     % https://stats.stackexchange.com/questions/34547/what-is-the-normal-approximation-of-the-multinomial-distribution?noredirect=1&lq=1
     % https://stats.stackexchange.com/questions/2397/asymptotic-distribution-of-multinomial
     % http://www.stat.umn.edu/geyer/5102/notes/brand.pdf
     probs = [];
     for k=1:size(log_radii,2)-1
-        probs = [probs, intFun([log_radii(k),log_radii(k+1),x])];
+        if hasTubeCorrection
+            probs = [probs, tubeCorrection(k)*intFun([log_radii(k),log_radii(k+1),x])];
+        else
+            probs = [probs, intFun([log_radii(k),log_radii(k+1),x])];
+        end
     end
     
 %     probs = [intFun([log_radii(1),log_radii(2),x]),...
