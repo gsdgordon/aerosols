@@ -13,7 +13,8 @@ close all;
 %addpath('./MatlabStan-2.15.1.0');
 %addpath('/home/george/Apps/cmdstan');
 
-folder = '../../StudyData';
+%folder = '../../StudyData';
+folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\ForGeorge_20201014';
 file = 'procedureends_lowerGI.csv';
 filepath = fullfile(folder,file);
 
@@ -56,6 +57,25 @@ else
     
     dataStartCol = 2;
 end
+
+%% Correct for effect of tube
+useTubeCorrection = true;
+
+if useTubeCorrection
+    tubeCorrection_tab = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\TubeCalibration\TubeBendCorrection.csv');
+    %tubeCorrection_tab = readtable('/home/george/Desktop/TubeBendCorrection.csv');
+    tubeCorrection = table2array(tubeCorrection_tab);
+
+    for k=1:size(diameters,1)
+        correctionIdx = find(diameters(k) == tubeCorrection(:,1));
+
+        correctionVal(k) = tubeCorrection(correctionIdx,2);
+    end
+else
+    correctionVal = zeros(1,nSizes);
+end
+
+%%
 
 
 nItems = size(indices,1);
@@ -126,9 +146,9 @@ for currentIdx = indices'
         if (k <= nSizes)
             subplot(nSizes+2,3,3*(k-1)+1);
             currentValid = ~isnan(data(k,:));
-            plot(time(currentValid),data(k,currentValid),'Color',tColor(k,:));
+            plot(time(currentValid),data(k,currentValid)./(1-correctionVal(k)),'Color',tColor(k,:));
             %hold on;
-            %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+            %plot(time(currentValid),bg_current(k,currentValid)./(1-correctionVal(k)),'Color','black','LineStyle',':', 'LineWidth',1);
 
             title(['Diameter: ', num2str(diameters(k)), '\mum']);
             ylabel('#/m^3');
@@ -146,7 +166,7 @@ for currentIdx = indices'
 
             subplot(nSizes+2,3,3*(k-1)+2);
             currentValid = ~isnan(data(k,:));
-            plot(time(currentValid),bg_current(k,currentValid),'Color',tColor(k,:),'LineStyle',':', 'LineWidth',1);
+            plot(time(currentValid),bg_current(k,currentValid)./(1-correctionVal(k)),'Color',tColor(k,:),'LineStyle',':', 'LineWidth',1);
 
             title(['Diameter: ', num2str(diameters(k)), '\mum']);
             ylabel('#/m^3');
@@ -159,7 +179,7 @@ for currentIdx = indices'
 
             subplot(nSizes+2,3,3*(k-1)+3);
             currentValid = ~isnan(data(k,:));
-            plot(time(currentValid),fg_current(k,currentValid),'Color',tColor(k,:));
+            plot(time(currentValid),fg_current(k,currentValid)./(1-correctionVal(k)),'Color',tColor(k,:));
 
             title(['Diameter: ', num2str(diameters(k)), '\mum']);
             ylabel('#/m^3');
@@ -175,9 +195,8 @@ for currentIdx = indices'
             if k== nSizes+1
                 subplot(nSizes+2,3,3*(k-1)+1);
                 currentValid = ~all(isnan(data),1);
-                plot(time(currentValid),nansum(data(:,currentValid),1),'k');
-                %hold on;
-                %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+                temp = data(:,currentValid);
+                plot(time(currentValid),nansum(temp./repmat(1-correctionVal',1,size(temp,2)),1),'k');
 
                 title(['Total #']);
                 ylabel('#/m^3');
@@ -192,7 +211,8 @@ for currentIdx = indices'
                 hold on;
 
                 subplot(nSizes+2,3,3*(k-1)+2);
-                plot(time(currentValid),nansum(bg_current(:,currentValid),1),'k');
+                temp = bg_current(:,currentValid);
+                plot(time(currentValid),nansum(temp./repmat(1-correctionVal',1,size(temp,2)),1),'k');
 
                 title(['Total #']);
                 ylabel('#/m^3');
@@ -204,7 +224,8 @@ for currentIdx = indices'
                 hold on;
 
                 subplot(nSizes+2,3,3*(k-1)+3);
-                plot(time(currentValid),nansum(fg_current(:,currentValid),1),'k');
+                temp = fg_current(:,currentValid);
+                plot(time(currentValid),nansum(fg_current(:,currentValid)./repmat(1-correctionVal',1,size(temp,2)),1),'k');
 
                 title(['Total #']);
                 ylabel('#/m^3');
@@ -217,9 +238,8 @@ for currentIdx = indices'
             elseif k == nSizes+2
                 subplot(nSizes+2,3,3*(k-1)+1);
                 currentValid = ~all(isnan(data),1);
-                plot(time(currentValid),nansum(data_v(:,currentValid),1),'k');
-                %hold on;
-                %plot(time(currentValid),bg_current(k,currentValid),'Color','black','LineStyle',':', 'LineWidth',1);
+                temp = data_v(:,currentValid);
+                plot(time(currentValid),nansum(temp./repmat(1-correctionVal',1,size(temp,2)),1),'k');
 
                 title(['Total vol']);
                 ylabel('vol/m^3');
@@ -236,7 +256,8 @@ for currentIdx = indices'
                 hold on;
 
                 subplot(nSizes+2,3,3*(k-1)+2);
-                plot(time(currentValid),nansum(bg_current_v(:,currentValid),1),'k');
+                temp = bg_current_v(:,currentValid);
+                plot(time(currentValid),nansum(temp./repmat(1-correctionVal',1,size(temp,2)),1),'k');
 
                 title(['Total vol']);
                 ylabel('vol/m^3');
@@ -248,7 +269,8 @@ for currentIdx = indices'
                 hold on;
 
                 subplot(nSizes+2,3,3*(k-1)+3);
-                plot(time(currentValid),nansum(fg_current_v(:,currentValid),1),'k');
+                temp = fg_current_v(:,currentValid);
+                plot(time(currentValid),nansum(temp./repmat(1-correctionVal',1,size(temp,2)),1),'k');
 
                 title(['Total vol']);
                 ylabel('vol/m^3');
@@ -373,7 +395,7 @@ if calcRawDiff
         A_t = sum(currentData_raw);
         A_t_v = sum(currentData_raw .* currentVols);
 
-        [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50);
+        [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50, 'tubeCorrection', correctionVal);
         A_diff(k) = A_t;
         A_v_diff(k) = A_t_v;
         mu_diff(k) = mu_t;

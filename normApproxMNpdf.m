@@ -19,7 +19,7 @@ function prob = normApproxMNpdf(x,log_radii, counts, intFun, varargin)
     probs = [];
     for k=1:size(log_radii,2)-1
         if hasTubeCorrection
-            probs = [probs, tubeCorrection(k)*intFun([log_radii(k),log_radii(k+1),x])];
+            probs = [probs, (1-tubeCorrection(k))*intFun([log_radii(k),log_radii(k+1),x])];
         else
             probs = [probs, intFun([log_radii(k),log_radii(k+1),x])];
         end

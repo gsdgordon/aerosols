@@ -14,6 +14,7 @@ Y = 2020;
 M = 10;
 D = 12;
 
+P = 2;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
@@ -28,21 +29,63 @@ location = T.Location;
 sampleTime = T.SampleTime;
 avSampleTime = mode(sampleTime); % assumes sample time is not changed during operation, but excludes partial samples
 
+loadAnnotations = true;
+if loadAnnotations
+    annotationFile = fullfile(folder,[datestring, '_patient', num2str(P), '.csv']);
+    T_annotation = readtable(annotationFile, 'ReadVariableNames', false, 'HeaderLines', 0); % FIX ignores first row
 
-% Sync times from different clocks as per the video
-obsCamTime_endo = datetime(Y,M,D,11,27,35);
-endoscopeTime = datetime(Y,M,D,11,41,30);
+    foundEventStart = false;
+    validEvents = false(size(T_annotation,1),1);
+    for k=1:size(T_annotation,1)
+        currentText = table2array(T_annotation(k,1));
+        currentText = currentText{1};
+        if strcmpi(currentText, 'incident')
+            eventStart_idx = k+1;
+            foundEventStart = true;
+            continue
+        end
+        
+        currentTime = table2array(T_annotation(k,2));
+        if foundEventStart
+            if ~isempty(currentText)
+                if ~(currentText(end) == '*' && currentText(end-1) == "*")
+                    validEvents(k) = true;
+                end
+            end
+        end
+    end
+    
+    eventNames = T_annotation(validEvents,1);
+    eventTimes_endo = T_annotation(validEvents,2);
+    eventTimes_obscam = T_annotation(validEvents,3);
+    eventTimes_aerotrak = T_annotation(validEvents,4);
+    
+    for k=1:size(eventNames,1)
+        currentTime_dur =(eventTimes_aerotrak{k,1}); % FIX need to sort by date
+        eventTimes(k,1) = datetime(Y,M,D,0,0,0) + currentTime_dur - seconds(avSampleTime);
+    end
+    
+    % FIX need to sort by date
+    startTime = eventTimes(1,1) - duration(0,5,0);
+    endTime = eventTimes(end,1) + duration(0,5,0);
+    
+    aeroOffsetTime = 0;
+else
+    % Sync times from different clocks as per the video
+    obsCamTime_endo = datetime(Y,M,D,11,27,35);
+    endoscopeTime = datetime(Y,M,D,11,41,30);
 
-obsCamTime_aerotrak = datetime(Y,M,D,11,27,39);
-aerotrakTime = datetime(Y,M,D,11,39,04) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
+    obsCamTime_aerotrak = datetime(Y,M,D,11,27,39);
+    aerotrakTime = datetime(Y,M,D,11,39,04) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
 
-aeroOffsetTime = aerotrakTime - obsCamTime_aerotrak;
-endoOffsetTime = endoscopeTime - obsCamTime_endo;
+    aeroOffsetTime = aerotrakTime - obsCamTime_aerotrak;
+    endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
-opTime = opTime - aeroOffsetTime;
+    opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(Y,M,D,11,35,00);
-endTime = datetime(Y,M,D,11,50,00);
+    startTime = datetime(Y,M,D,11,35,00);
+    endTime = datetime(Y,M,D,11,50,00);
+end
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
@@ -239,10 +282,18 @@ for k=1:nSizes+2
 %         xline(datetime(2020,10,22,17,03,37),'k--','i');
         
         % Patient 6 (no mask)
-        xline(datetime(2020,10,22,18,05,42),'k--','e');
-        xline(datetime(2020,10,22,17,50,25),'k--','sp');
-        xline(datetime(2020,10,22,17,52,20),'k--','mv');
-        xline(datetime(2020,10,22,17,54,55),'k--','i');
+%         xline(datetime(2020,10,22,18,05,42),'k--','e');
+%         xline(datetime(2020,10,22,17,50,25),'k--','sp');
+%         xline(datetime(2020,10,22,17,52,20),'k--','mv');
+%         xline(datetime(2020,10,22,17,54,55),'k--','i');
+
+        for m=1:size(eventNames,1)
+            if k==1
+                xline(eventTimes(m),'k--',eventNames{m,1});
+            else
+                xline(eventTimes(m),'k--');
+            end
+        end
     end
 end
 
