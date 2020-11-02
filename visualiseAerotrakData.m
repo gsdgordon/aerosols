@@ -12,7 +12,7 @@ close all;
 % Load data
 Y = 2020;
 M = 10;
-D = 8;
+D = 12;
 
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
@@ -20,8 +20,8 @@ datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
 %folder = ['/home/george/Desktop/'];
 
-%T = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
-T = readtable('/home/george/Desktop/20201030_aerotrak.xlsx');
+T = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
+%T = readtable('/home/george/Desktop/20201030_aerotrak.xlsx');
 
 opTime = T.DateAndTime;
 location = T.Location;
@@ -30,19 +30,19 @@ avSampleTime = mode(sampleTime); % assumes sample time is not changed during ope
 
 
 % Sync times from different clocks as per the video
-obsCamTime_endo = datetime(Y,M,D,09,29,27);
-endoscopeTime = datetime(Y,M,D,09,44,41);
+obsCamTime_endo = datetime(Y,M,D,11,27,35);
+endoscopeTime = datetime(Y,M,D,11,41,30);
 
-obsCamTime_aerotrak = datetime(Y,M,D,09,29,31);
-aerotrakTime = datetime(Y,M,D,08,38,57) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
+obsCamTime_aerotrak = datetime(Y,M,D,11,27,39);
+aerotrakTime = datetime(Y,M,D,11,39,04) + seconds(avSampleTime); %Aerotrak time is the time at the start of the sample
 
 aeroOffsetTime = aerotrakTime - obsCamTime_aerotrak;
 endoOffsetTime = endoscopeTime - obsCamTime_endo;
 
 opTime = opTime - aeroOffsetTime;
 
-startTime = datetime(Y,M,D,11,46,00);
-endTime = datetime(Y,M,D,12,01,00);
+startTime = datetime(Y,M,D,11,35,00);
+endTime = datetime(Y,M,D,11,50,00);
 
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
@@ -92,7 +92,8 @@ tColor = lines(nSizes);
 useTubeCorrection = true;
 
 if useTubeCorrection
-    tubeCorrection_tab = readtable('/home/george/Desktop/TubeBendCorrection.csv');
+    tubeCorrection_tab = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\TubeCalibration\TubeBendCorrection.csv');
+    %tubeCorrection_tab = readtable('/home/george/Desktop/TubeBendCorrection.csv');
     tubeCorrection = table2array(tubeCorrection_tab);
 
     for k=1:nSizes
@@ -211,11 +212,11 @@ for k=1:nSizes+2
 
         
         %Patient 2
-        xline(datetime(2020,10,30,12,00,44),'k--','e');
-        xline(datetime(2020,10,30,12,00,50),'k--','m');
-        xline(datetime(2020,10,30,11,48,00),'k--','sp');
-        xline(datetime(2020,10,30,11,50,35),'k--','mv');
-        xline(datetime(2020,10,30,11,52,15),'k--','i');
+%         xline(datetime(2020,10,30,12,00,44),'k--','e');
+%         xline(datetime(2020,10,30,12,00,50),'k--','m');
+%         xline(datetime(2020,10,30,11,48,00),'k--','sp');
+%         xline(datetime(2020,10,30,11,50,35),'k--','mv');
+%         xline(datetime(2020,10,30,11,52,15),'k--','i');
         
         % Patient 3
 %         xline(datetime(2020,10,30,13,00,17),'k--','e');
@@ -224,6 +225,24 @@ for k=1:nSizes+2
 %         xline(datetime(2020,10,30,13,00,38),'k--','m');
 %         xline(datetime(2020,10,30,13,01,00),'k--','mv');
 %         xline(datetime(2020,10,30,12,49,46),'k--','i');
+
+        % Patient 4 (no mask)
+%         xline(datetime(2020,10,22,16,10,28),'k--','e');
+%         xline(datetime(2020,10,22,15,55,03),'k--','sp');
+%         xline(datetime(2020,10,22,15,56,05),'k--','mv');
+%         xline(datetime(2020,10,22,16,01,10),'k--','i');
+        
+        % Patient 5 (no mask)
+%         xline(datetime(2020,10,22,17,10,59),'k--','e');
+%         xline(datetime(2020,10,22,16,54,24),'k--','sp');
+%         xline(datetime(2020,10,22,16,56,06),'k--','mv');
+%         xline(datetime(2020,10,22,17,03,37),'k--','i');
+        
+        % Patient 6 (no mask)
+        xline(datetime(2020,10,22,18,05,42),'k--','e');
+        xline(datetime(2020,10,22,17,50,25),'k--','sp');
+        xline(datetime(2020,10,22,17,52,20),'k--','mv');
+        xline(datetime(2020,10,22,17,54,55),'k--','i');
     end
 end
 
