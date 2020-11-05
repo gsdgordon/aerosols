@@ -14,14 +14,14 @@ close all;
 %addpath('/home/george/Apps/cmdstan');
 
 %folder = '../../StudyData';
-folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\ForGeorge_20201014';
-file = 'procedureends_lowerGI.csv';
+folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\csv0909_1310';
+file = 'UpperGI_cough.csv';
 filepath = fullfile(folder,file);
 
 % Load data
 opts = detectImportOptions(filepath);
 
-isFullData = false;
+isFullData = true;
 if isFullData
     opts.DataLines = [1, 5];
     opts.RowNamesColumn = 1;
@@ -36,12 +36,15 @@ if isFullData
     endTime = str2double(headers(4,1).Var2{1});
     timeStep = str2double(headers(5,1).Var2{1});
     
-    T = readtable(filepath,'ReadVariableNames', true, 'HeaderLines',6);
+    T = readtable(filepath,'ReadVariableNames', true, 'HeaderLines',5);
     
-    indices = unique(T.Index);
-    diameters = T(T.Index == indices(1),26);
-    diameters = table2array(diameters);
-    dataStartCol = 27;
+    eventTimes = table2array(unique(T(:,4)));
+    indices = 1:size(eventTimes,1);
+    indices = indices';
+    diameters_full = T.ParticleBin_um_;
+    diameters = diameters_full(table2array(T(:,4)) == eventTimes(1));
+    %diameters = table2array(diameters);
+    dataStartCol = 25; %% FIX should determine this from variable names
 else
     T = readtable(filepath,'ReadVariableNames', true, 'HeaderLines',0);
     
@@ -86,7 +89,7 @@ diameters = [diameters; maxDiameter];
 time = startTime:timeStep:endTime;
 nTimes = (endTime - startTime)/timeStep + 1;
 
-validRows = T.Index == 1; % FIX should loop for other indices and check
+validRows = table2array(T(:,4)) == eventTimes(1); % FIX should loop for other indices and check
 tempData = table2array(T(validRows,dataStartCol:dataStartCol+nTimes-1));
 bg = zeros(size(tempData,1), size(tempData,2), size(indices,1));
 fg = zeros(size(tempData,1), size(tempData,2), size(indices,1));
@@ -95,7 +98,7 @@ avSampleTimes = zeros(size(indices,1),1);
 for currentIdx = indices'
     % Step to check validity of data? Make sure volume/m^3 is correct
     
-    validRows = T.Index == currentIdx;
+    validRows = table2array(T(:,4)) == eventTimes(currentIdx);
 
     data = table2array(T(validRows,dataStartCol:dataStartCol+nTimes-1));
     
@@ -280,6 +283,10 @@ for currentIdx = indices'
                     xline(0,'k:');
                 end
                 hold on;
+                
+                if any(nansum(temp./repmat(1-correctionVal',1,size(temp,2)),1) > 2e-10)
+                    a = 1;
+                end
             end
             
         end
@@ -299,33 +306,44 @@ clipNegatives = true; %Negative counts values set to zero
 calcRawDiff = true;
 
 if calcRawDiff
-    rawdiffwindowSize = 50;
+    rawdiffwindowSize_after = 100;
     buffer = 20;
-    windowStart = -5; %Should really be 0 for all cases
+    windowStart = 0; %Should really be 0 for all cases
 
-    sampleValid = time >= windowStart & time < (windowStart + rawdiffwindowSize + buffer);
+    sampleValid = time > windowStart & time <= (windowStart + rawdiffwindowSize_after + buffer);
     sample_preInt = raw(:,sampleValid,:);
     sample_int_raw_after_all = zeros(size(raw,1),size(raw,3));
 
     for k = 1:size(sample_preInt,3)
         cumdt = 0;
         cumdd = zeros(size(sample_preInt,1),1);
-        for kk=2:size(sample_preInt,2) % start from 2 to exclude the first point as data is cumulative after the event
-            cumdt = cumdt + 1;
+        for kk=1:size(sample_preInt,2)
+            
+            if (kk <= rawdiffwindowSize_after)
+                cumdt = cumdt + 1;
+            end
 
             if ~all(isnan(sample_preInt(:,kk,k)))
                 cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
 
                 cumdt = 0;
+                
+                if kk >= rawdiffwindowSize_after
+                    break;
+                end
             end
 
         end
+        
+        cumdd = cumdd/rawdiffwindowSize_after;
         sample_int_raw_after_all(:,k) = cumdd;
     end
 
-    windowEnd = windowStart; %Should really be 0 for all cases
-
-    sampleValid = time >= (windowStart- rawdiffwindowSize - buffer) & time < (windowEnd);
+    windowEnd = windowStart;
+    rawdiffwindowSize_before = 50;
+    windowStart = windowEnd - rawdiffwindowSize_before;
+    
+    sampleValid = time > windowStart & time <= (windowStart + rawdiffwindowSize_before + buffer);
     sample_preInt = raw(:,sampleValid,:);
     sample_int_raw_before_all = zeros(size(raw,1),size(raw,3));
 
@@ -333,15 +351,24 @@ if calcRawDiff
         cumdt = 0;
         cumdd = zeros(size(sample_preInt,1),1);
         for kk=1:size(sample_preInt,2)
-            cumdt = cumdt + 1;
+            
+            if (kk <= rawdiffwindowSize_before)
+                cumdt = cumdt + 1;
+            end
 
             if ~all(isnan(sample_preInt(:,kk,k)))
                 cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
 
                 cumdt = 0;
+                
+                if kk >= rawdiffwindowSize_before
+                    break;
+                end
             end
 
         end
+        
+        cumdd = cumdd/rawdiffwindowSize_before;
         sample_int_raw_before_all(:,k) = cumdd;
 
     end
@@ -349,7 +376,7 @@ if calcRawDiff
     sample_int_raw_diff_all = sample_int_raw_after_all - sample_int_raw_before_all;
 
     % Diameter array per each data set
-    nValid = nnz(~isnan(sample_int_raw_diff_all(:,1)));
+    nValid = nnz(~isnan(sample_int_raw_diff_all(:,end))); %FIX Should be more robust than this
 
     sample_int_raw_diff = zeros(nValid,size(sample_int_raw_diff_all,2));
     diameters_2 = zeros(size(sample_int_raw_diff,1)+1, size(sample_int_raw_diff,2));
@@ -377,8 +404,9 @@ if calcRawDiff
         if clipNegatives
             validSamples = currentData >= 0;
 
+            maxExclusions = 3;
             m = 1;
-            while ~validSamples(m) && m <= 2
+            while ~validSamples(m) && m <= maxExclusions
                 m = m+1;
             end
 
@@ -395,7 +423,7 @@ if calcRawDiff
         A_t = sum(currentData_raw);
         A_t_v = sum(currentData_raw .* currentVols);
 
-        [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(50), 'sig_LB', 0.2, 'sig_UB', 50, 'tubeCorrection', correctionVal);
+        [~, mu_t, sigma_t, l_t] = fitAerosolDist(currentDiameters.', (currentData./currentLogBinSizes)','fitType','counts', 'mu_LB', log(0.1), 'mu_UB', log(20), 'sig_LB', 0.2, 'sig_UB', 50, 'tubeCorrection', correctionVal);
         A_diff(k) = A_t;
         A_v_diff(k) = A_t_v;
         mu_diff(k) = mu_t;
@@ -407,45 +435,94 @@ if calcRawDiff
     %     A_fg_after(A_fg_after<0) = 0;
     %     %A_fg_after= A_fg_after(A_fg_after>0);
     % end
+    
+    
+    fitLogNorm = true;
+    if (fitLogNorm) % Fix should fit sum of lognorm and noise
+        noiseMean = 0;
+        noiseStd = 1117; %UG 1117. LG 3602
+        
+        reject = A_diff < -3*noiseStd; % Reject points that are probably errors
+        
+        A_diff_trunc_zeros = A_diff(A_diff>0);
+        A_marg_ln_hat = lognfit(A_diff_trunc_zeros);
+        A_diff_trunc = A_diff(~reject);
+        objFun = @(x) -1*sum(sumLognormNormpdf(A_diff_trunc, x(1),x(2),0,noiseStd));
 
+        x0 = A_marg_ln_hat;
+        LB = [0,0];
+        UB = [2*A_marg_ln_hat(1), 2*A_marg_ln_hat(2)];
+        
+        options_fmincon = optimoptions('fmincon','MaxFunctionEvaluations',1e4, 'StepTolerance',1e-12, 'OptimalityTolerance',1e-12, 'Display', 'off');
+        bestVal = fmincon(objFun,x0,[],[],[],[], LB , UB,[],options_fmincon);
+        A_marg_ln_hat = bestVal;
+    else
+        [A_marg_n_mu, A_marg_n_sig] = normfit(A_diff);
+    end
+    
+    mu_weights = normcdf(A_diff, noiseMean+3*noiseStd,noiseStd);
+    [mu_marg_mu, mu_marg_sig] = normfit(mu_diff,[],[],mu_weights);
+    sig_marg_hat = gamfit(sigma_diff,[],[],mu_weights);
+    
+    mu_plot = linspace(-3,3,200);
+    sig_plot = linspace(0,5,200);
+    A_plot = linspace(-4e3,1e5,200);
 
     figure;
     subplot(3,2,1);
-    scatter(mu_diff,zeros(size(mu_diff)),'kx','LineWidth',2);
-    xlabel('mu');
-    title('mu marginal');
+    scatter(exp(mu_diff),zeros(size(mu_diff)),'rx','LineWidth',2);
+    xlabel('mean particle diameter (\mu m)');
+    ylabel('density');
+    title(['mu marginal: \mu = ', num2str(exp(mu_marg_mu)), ', \sigma = ', num2str(mu_marg_sig)]);
+    hold on;
+    plot(exp(mu_plot), normpdf(mu_plot,mu_marg_mu, mu_marg_sig), 'r');
+    xlim([min(exp(mu_plot)), max(exp(mu_plot))]);
 
     subplot(3,2,3);
-    scatter(sigma_diff,zeros(size(sigma_diff)),'kx','LineWidth',2);
-    xlabel('sigma');
-    title('sigma marginal');
-
+    scatter(sigma_diff,zeros(size(sigma_diff)),'bx','LineWidth',2);
+    xlabel('sigma (log units)');
+    ylabel('density');
+    title(['sigma marginal: \alpha = ', num2str(sig_marg_hat(1)), ', \beta = ', num2str(sig_marg_hat(2))]);
+    hold on;
+    plot(sig_plot, gampdf(sig_plot,sig_marg_hat(1), sig_marg_hat(2)), 'b');
+    xlim([min((sig_plot)), max((sig_plot))]);
 
     subplot(3,2,5);
     scatter(A_diff,zeros(size(A_diff)),'kx','LineWidth',2);
-    xlabel('A');
-    title('A marginal');
+    xlabel('# particles/m^3/s');
+    hold on;
+    if fitLogNorm
+        plot(A_plot, lognpdf(A_plot,A_marg_ln_hat(1),A_marg_ln_hat(2)), 'k');
+        title(['#particles marginal: \mu = ', num2str(exp(A_marg_ln_hat(1))), ', \sigma = ', num2str(A_marg_ln_hat(2))]);
+    else
+        plot(A_plot, normpdf(A_plot,A_marg_n_mu,A_marg_n_sig), 'k');
+        title(['#particles marginal: \mu = ', num2str(A_marg_n_mu), ', \sigma = ', num2str(A_marg_n_sig)]);
+    end
+    xlim([min(A_plot), max(A_plot)]);
 
     subplot(3,2,2);
-    scatter(A_diff, mu_diff,'kx','LineWidth',2);
-    xlim([0,4e6]);
-    ylim([-6,3]);
-    xlabel('A');
-    ylabel('mu');
+    scatter(A_diff, exp(mu_diff),'gx','LineWidth',2);
+    xlim([min(A_plot), max(A_plot)]);
+    ylim([min(exp(mu_plot)), max(exp(mu_plot))]);
+    xlabel('# particles/m^3/s');
+    ylabel('particle diameter (\mu m)');
+    title('Joint distribution \mu vs #');
 
     subplot(3,2,4);
-    scatter(mu_diff,sigma_diff,'kx','LineWidth',2);
-    xlim([-6,3]);
-    ylim([0,4]);
-    xlabel('mu');
+    scatter(exp(mu_diff),sigma_diff,'gx','LineWidth',2);
+    xlim([min(exp(mu_plot)), max(exp(mu_plot))]);
+    ylim([min(sig_plot), max(sig_plot)]);
+    xlabel('particle diameter (\mu m)');
     ylabel('sigma');
+    title('Joint distribution \sigma vs \mu');
 
     subplot(3,2,6);
-    scatter(A_diff,sigma_diff,'kx','LineWidth',2);
-    xlim([0,4e6]);
-    ylim([0,4]);
-    xlabel('A');
+    scatter(A_diff,sigma_diff,'gx','LineWidth',2);
+    xlim([min(A_plot), max(A_plot)]);
+    ylim([min(sig_plot), max(sig_plot)]);
+    xlabel('# particles/m^3/s');
     ylabel('sigma');
+    title('Joint distribution \sigma vs #');
 end
 
 %% fit FG after the event

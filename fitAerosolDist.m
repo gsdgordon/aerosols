@@ -157,7 +157,12 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
         if useNormPrior
             log_prior = @(x) sum(counts)*(log(1/(mu_sig*sqrt(2*pi))) -(x(1) - mu_mu)^2/(2*mu_sig^2)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...
         else
-            log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB)); % Prior is on the radius...
+            a = 1;
+            b = 20; %Centered
+            N_temp = sum(densities);
+            log_prior = @(x) log(unifpdf(x(1),mu_LB, mu_UB)) + log(unifpdf(x(2),sig_LB,sig_UB)) + N_temp*log(betacdf((normcdf(log_radii(end),x(1),x(2)) - normcdf(log_radii(1),x(1),x(2))),a,b));
+            
+            % Prior is on the radius...
         end
     end
     
@@ -273,7 +278,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
             normConst = testArea/totArea;
             
         else
-            normConst = normcdf(log_diameters(end),mu,sigma) - normcdf(log_diameters(1),mu,sigma);
+            normConst = normcdf(log_diameters(end),mu,sigma) - normcdf(log_diameters(1),mu,sigma)
         end
     else
         normConst = logncdf(diameters(end),mu,sigma) - logncdf(diameters(1),mu,sigma);

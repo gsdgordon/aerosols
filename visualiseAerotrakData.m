@@ -62,7 +62,7 @@ if loadAnnotations
     
     for k=1:size(eventNames,1)
         currentTime_dur =(eventTimes_aerotrak{k,1}); % FIX need to sort by date
-        eventTimes(k,1) = datetime(Y,M,D,0,0,0) + currentTime_dur - seconds(avSampleTime);
+        eventTimes(k,1) = datetime(Y,M,D,0,0,0) + currentTime_dur - seconds(avSampleTime); % Shift events, not aerotrak
     end
     
     % FIX need to sort by date
@@ -87,6 +87,7 @@ else
     endTime = datetime(Y,M,D,11,50,00);
 end
 
+
 tValid = isbetween(opTime,startTime,endTime);
 tValid = tValid & strcmpi(location,'Location01');
 
@@ -95,6 +96,25 @@ T = T(1:end-1,:); % remove last count as it is likely partial
 
 opTime2 = T.DateAndTime - aeroOffsetTime;
 airVol = T.Volume_L_;
+
+loadN60data_var = false;
+if loadN60data_var
+    folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\20201028\20202810_04_N60';
+    prefix = '--6-Run';
+
+    AT_diff = eventTimes_aerotrak{1,1} - eventTimes_obscam{1,1};
+
+    obscamTime_N60 = datetime(2020,10,28,9,37,35);
+    N60_time = datetime(2020,10,28,8,48,56);
+    N60_diff = N60_time - obscamTime_N60;
+
+    N60_diff_AT = N60_diff - AT_diff;
+
+    % INput times
+    [N60timesall, N60counts, N60diameters, N60shapes] = loadN60data(folder, prefix, opTime2(1)+N60_diff_AT, opTime2(end)+N60_diff_AT);
+    N60timesall = N60timesall - N60_diff_AT;
+    
+end
 
 % Now get the particle 'diameters' representing the edges of the counting
 % bins
@@ -295,6 +315,77 @@ for k=1:nSizes+2
             end
         end
     end
+end
+
+if loadN60data_var
+    figure;
+    subplot(7,1,1);
+    plot(N60timesall, N60counts);
+    title('N60 counts');
+    xlabel('time');
+    ylabel('count');
+
+    subplot(7,1,2);
+    plot(N60timesall, N60diameters, 'r');
+    title('N60 diameters');
+    xlabel('time');
+    ylabel('diameter (\mum)');
+
+    subplot(7,1,3);
+    plot(N60timesall, N60shapes,'b');
+    title('N60 shapes');
+    xlabel('time');
+    ylabel('sphericity');
+    
+    for k=5:nSizes+2
+
+        if (k <= nSizes)
+
+            subplot(7,1,k-1);
+            plot(opTime2,data_density(k,:)/(1-correctionVal(k)),'Color',tColor(k,:));
+            title(['AeroTrak Diameter: ', num2str(diameters(k)), '\mum']);
+            ylabel('#/m^3');
+            xlabel('time')
+
+
+        elseif k== nSizes+1
+            subplot(7,1,k-1);
+            currentValid = ~all(isnan(data),1);
+            plot(opTime2,nansum(data./repmat(1-correctionVal',1,size(data,2)),1),'k');
+
+
+            title(['AeroTrak Total #']);
+            ylabel('#/m^3');
+            xlabel('time');
+            
+
+        elseif k == nSizes+2
+            subplot(7,1,k-1)
+            currentValid = ~all(isnan(data),1);
+            plot(opTime2,nansum(data_v./repmat(1-correctionVal',1,size(data,2)),1),'k');
+
+            title(['AeroTrak Total vol']);
+            ylabel('vol/m^3');
+            xlabel('time');
+        end
+    end
+    
+    for k=1:nSizes+2
+        if k <= 3
+            subplot(7,1,k);
+        else
+        	subplot(7,1,k-1);
+        end
+        
+        for m=1:size(eventNames,1)
+            if k==1
+                xline(eventTimes(m),'k--',eventNames{m,1});
+            else
+                xline(eventTimes(m),'k--');
+            end
+        end
+    end
+    
 end
 
 %save('cond4.mat','data', 'diameters', 'opTime2','avSampleTime');
