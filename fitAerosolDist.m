@@ -1,6 +1,6 @@
 % Function to fit aerosol distirbution
 
-function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, varargin)
+function [A, mu, sigma, likelihood, w, A_v, mu_v, sigma_v] = fitAerosolDist(diameters, densities, varargin)
 
     p = inputParser;
     addOptional(p,'initPop',[]);
@@ -17,6 +17,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     addOptional(p,'w_LB', 0);
     addOptional(p,'w_UB', 0.1);
     addOptional(p,'tubeCorrection', []);
+    addOptional(p,'fullDiameters',[]);
     %addOptional(p
     
     parse(p,varargin{:});
@@ -41,6 +42,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     w_UB = p.Results.w_UB;
     mu_mu = log(exp(p.Results.mu_mu)/2);
     mu_sig = p.Results.mu_sig;
+    fullDiameters = p.Results.fullDiameters;
     
     
     if isnan(mu_mu) || isnan(mu_sig)
@@ -123,6 +125,7 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
         end
     elseif strcmpi(fitType,'volume')
         if logDensity
+            intFun = @(y) trapz(1./exp(linspace(y(1),y(2),nIntSteps)).*normpdf(linspace(y(1),y(2),nIntSteps),y(3),y(4)))*(y(2)-y(1))/(nIntSteps-1); % For total volume
         else
             intFun = @(y) trapz(1./linspace(y(1),y(2),nIntSteps).*lognpdf(linspace(y(1),y(2),nIntSteps),y(3),y(4)))*(y(2)-y(1))/(nIntSteps-1); % For total volume
         end
@@ -244,11 +247,42 @@ function [A, mu, sigma, likelihood, w] = fitAerosolDist(diameters, densities, va
     likelihood = log_likelihood(bestVal);
    
     % Convert back to diameters
-    A = sum(counts);
     mu_r = bestVal(1);
     mu = log(exp(mu_r)*2);
     sigma_r = bestVal(2);
     sigma = sigma_r; % In log space doesn't change as distribution is just shifted
+    
+    if isempty(fullDiameters)
+        A = sum(counts);
+    else
+        log_rFull = log(fullDiameters/2);
+        
+        diameters_av_full = (fullDiameters(1:end-1)+fullDiameters(2:end))/2; % Mean diameter in each bin
+        volsFull = 4/3*pi*(diameters_av_full/2).^3 * (1e-6)^3;
+        
+        fitFrac = normcdf(log_radii(end),mu_r, sigma_r) - normcdf(log_radii(1), mu_r, sigma_r);
+        fullFrac = normcdf(log_rFull(end),mu_r, sigma_r) - normcdf(log_rFull(1), mu_r, sigma_r);
+        
+        A = sum(counts)/fitFrac * fullFrac;
+        
+        for k=1:size(log_rFull,1)-1
+            allFracs(k) = normcdf(log_rFull(k+1),mu_r, sigma_r) - normcdf(log_rFull(k), mu_r, sigma_r);
+        end
+        allCounts = A * (allFracs/sum(allFracs));
+        
+        A_v = sum(allCounts .* volsFull');
+        
+        %Convert other metrics to volume
+        log_rFull_2 = linspace(min(log_rFull),max(log_rFull),200);
+        allFracs_2 = normcdf(log_rFull_2(2:end),mu_r, sigma_r) - normcdf(log_rFull_2(1:end-1),mu_r, sigma_r);
+        diameters_av_full_2 = (exp(log_rFull_2(1:end-1))*2 + exp(log_rFull_2(1:end-1))*2)/2;
+        volsFull_2 = 4/3*pi*(diameters_av_full_2/2).^3 * (1e-6)^3;
+        
+        allFracs_2_vol = allFracs_2 .* volsFull_2;
+        mu_v = sum(log(diameters_av_full_2) .* (allFracs_2_vol/sum(allFracs_2_vol)));
+        sigma_v = std(log(diameters_av_full_2), (allFracs_2_vol/sum(allFracs_2_vol)));
+        %[mu_v, sigma_v] = 
+    end
     
     if isBimodal
         w = bestVal(3);

@@ -12,9 +12,9 @@ close all;
 % Load data
 Y = 2020;
 M = 10;
-D = 12;
+D = 29;
 
-P = 2;
+P = 1;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
