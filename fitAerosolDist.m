@@ -124,6 +124,9 @@ function [A, mu, sigma, likelihood, w, A_v, mu_v, sigma_v] = fitAerosolDist(diam
             intFun = @(y) trapz(lognpdf(linspace(y(1),y(2),nIntSteps),y(3),y(4)))*(y(2)-y(1))/(nIntSteps-1); % For particle count
         end
     elseif strcmpi(fitType,'volume')
+        
+        countsAmp = 1e14;
+        counts = counts * countsAmp;
         if logDensity
             intFun = @(y) trapz(1./exp(linspace(y(1),y(2),nIntSteps)).*normpdf(linspace(y(1),y(2),nIntSteps),y(3),y(4)))*(y(2)-y(1))/(nIntSteps-1); % For total volume
         else
@@ -263,14 +266,18 @@ function [A, mu, sigma, likelihood, w, A_v, mu_v, sigma_v] = fitAerosolDist(diam
         fitFrac = normcdf(log_radii(end),mu_r, sigma_r) - normcdf(log_radii(1), mu_r, sigma_r);
         fullFrac = normcdf(log_rFull(end),mu_r, sigma_r) - normcdf(log_rFull(1), mu_r, sigma_r);
         
-        A = sum(counts)/fitFrac * fullFrac;
+        A_temp = sum(counts)/fitFrac * fullFrac;
+        if strcmpi(fitType,'volume')
+            A_temp = A_temp/countsAmp;
+        end
         
         for k=1:size(log_rFull,1)-1
             allFracs(k) = normcdf(log_rFull(k+1),mu_r, sigma_r) - normcdf(log_rFull(k), mu_r, sigma_r);
         end
-        allCounts = A * (allFracs/sum(allFracs));
+        allCounts = A_temp * (allFracs/sum(allFracs));
         
-        A_v = sum(allCounts .* volsFull');
+        A = allCounts;
+        A_v = (allCounts .* volsFull');
         
         %Convert other metrics to volume
         log_rFull_2 = linspace(min(log_rFull),max(log_rFull),200);
@@ -312,7 +319,7 @@ function [A, mu, sigma, likelihood, w, A_v, mu_v, sigma_v] = fitAerosolDist(diam
             normConst = testArea/totArea;
             
         else
-            normConst = normcdf(log_diameters(end),mu,sigma) - normcdf(log_diameters(1),mu,sigma)
+            normConst = normcdf(log_diameters(end),mu,sigma) - normcdf(log_diameters(1),mu,sigma);
         end
     else
         normConst = logncdf(diameters(end),mu,sigma) - logncdf(diameters(1),mu,sigma);
@@ -331,9 +338,9 @@ function [A, mu, sigma, likelihood, w, A_v, mu_v, sigma_v] = fitAerosolDist(diam
   
     if plotFit
         if logDensity
-            plot(log_diameters_av,densities/A*normConst);
+            plot(log_diameters_av,densities/sum(A)*normConst);
         else
-            plot(log(diameters_av),densities/A*normConst);
+            plot(log(diameters_av),densities/sum(A)*normConst);
         end
         hold on;
         %plot(log(diameters_av),(logncdf(diameters(2:7),mu,sigma) - logncdf(diameters(1:6),mu,sigma))./binSizes,'r-');

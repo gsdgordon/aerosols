@@ -14,15 +14,23 @@ close all;
 %addpath('/home/george/Apps/cmdstan');
 addpath('.\Violinplot-Matlab-master');
 
-folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\csv0909_1310';
+folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\csv0909_0411';
 
 loadFolder = true;
 if loadFolder
     fileList_raw = dir(folder);
     
-    filterFun = @(x) regexp(x, '.*[.]csv');
+    filterFun = @(x) regexpi(x, '.*[.]csv');
     temp = cellfun(filterFun, {fileList_raw.name}, 'UniformOutput', false); 
     fileList_raw = fileList_raw(~cellfun(@isempty,temp));
+    
+    filterFun = @(x) regexpi(x, '.*test.*[.]csv'); %Should exclude TEST files
+    temp = cellfun(filterFun, {fileList_raw.name}, 'UniformOutput', false); 
+    fileList_raw = fileList_raw(cellfun(@isempty,temp));
+    
+    filterFun = @(x) regexpi(x, '.*roomdoors.*[.]csv'); %Exclude room doors files
+    temp = cellfun(filterFun, {fileList_raw.name}, 'UniformOutput', false); 
+    fileList_raw = fileList_raw(cellfun(@isempty,temp));
     
     fileList = {fileList_raw.name};
     fileList = fileList';
@@ -31,7 +39,7 @@ if loadFolder
     temp = cellfun(filterFun, fileList, 'UniformOutput', false); 
     fileList = fileList(cellfun(@isempty,temp));
 else
-    fileList = {'UpperGI_cough.csv'};
+    fileList = {'UpperGI_throatspraygiven.csv'};
 
 end
 
@@ -113,35 +121,63 @@ for fileIdx = 1:nFiles
         %diameters = table2array(diameters);
         dataStartCol = 25; %% FIX should determine this from variable names
         
-        patientNos = unique(T.StudyNumber);
+        patientNos = T.StudyNumber(sort(tempIdxes, 'ascend'));
         
         otherVars = T(sort(tempIdxes, 'ascend'),8:(dataStartCol-2));
         
+        % Sedation variable creations
         sedation_raw = otherVars.SedationDetails;
+        [sedation, sedationCats] = processVars(otherVars.SedationDetails, {'midazolam','propofol', 'entonox', 'none'}, {'.*mid.*'}, {'.*prop.*'}, {'.*ento.*'},{'.*none.*','.*N/A.*',''});
+                
+        % Anal tone
+        analTone_raw = otherVars.AnalTone;
+        [analTone, analToneCats] = processVars(otherVars.AnalTone, {'low','medium', 'high', 'N/A'}, {'.*low.*', '.*loose.*', '.*poor.*'}, {'.*normal.*', '.*medium.*', '.*middle.*'}, {'.*good.*', '.*tight.*', '.*high.*'},{'.*none.*','.*N/A.*',''});
+                
+        %Co2 vs water
+        co2water_raw = otherVars.UseOfCO2OrWater;
+        [useOfCO2orWater, useOfCO2orWaterCats] = processVars(otherVars.UseOfCO2OrWater, {'CO2','Water', 'N/A'}, {'.*co2.*', '.*yes.*'}, {'.*water.*', '.*h2o.*'}, {'.*none.*','.*N/A.*',''});
+             
+        % Smoker
+        smokerTemp_raw = otherVars.Smoker;
+        [isSmoker, isSmokerCats] = processVars(otherVars.Smoker, {'yes','no', 'unknown'}, {'.*yes.*', '.*[1-9]?[0-9]*.*'}, {'.*no.*', '.*[0]+.*'}, {'.*none.*','.*N/A.*',''});
         
-        midaz_raw = regexpi(sedation_raw, '.*mid.*');
-        midaz = ~cellfun(@isempty,midaz_raw);
-        propofol_raw = regexpi(sedation_raw, '.*prop.*');
-        propofol = ~cellfun(@isempty,propofol_raw);
-        entonox_raw = regexpi(sedation_raw, '.*ento.*');
-        entonox = ~cellfun(@isempty,entonox_raw);
+        % Mask
+        usesPatientMask_raw = ismember(patientNos,[59,60,61, 64,65]); %FIX should pull this
+        usesPatientMask = categorical(usesPatientMask_raw+1,1:2,{'No Mask', 'Mask'});
         
-        noSed_raw = regexpi(sedation_raw, '.*none.*');
-        noSed = ~cellfun(@isempty,noSed_raw);
-
-        noSed_raw = regexpi(sedation_raw, '.*N/A.*');
-        noSed = noSed | ~cellfun(@isempty,noSed_raw);
+        % Room type
+        roomType_raw = ismember(patientNos,[31,32,33]); %FIX should pull this
+        roomType = categorical(roomType_raw+1,1:2,{'Endoscopy room', 'Theatre'});
         
-        noSed = noSed | cellfun(@isempty,sedation_raw);
+        %UGI route
+        ugiRouteTemp_raw = otherVars.RouteOfUGIEndoscopy_oralOrNasal_;
+        [ugiRoute, ugiRouteCats] = processVars(otherVars.RouteOfUGIEndoscopy_oralOrNasal_, {'oral', 'nasal', 'N/A'}, {'.*oral.*', '.*mouth.*'}, {'.*nasal.*', '.*nose.*'}, {'.*none.*','.*N/A.*',''});
         
-        sedationTemp = zeros(size(sedation_raw));
-        sedationTemp(midaz) = 1;
-        sedationTemp(propofol) = 2;
-        sedationTemp(entonox) = 3;
-        sedationTemp(noSed) = 4;
-        sedation = categorical(sedationTemp,1:4,{'midazolam','propofol', 'entonox', 'none'});
-        sedationCats = categories(sedation);
-        %sedation(midaz) = 
+        %Diverticular disease
+        diverticularDiseaseTemp_raw = otherVars.ExtensiveDiverticularDisease;
+        [diverticularDisease, diverticularDiseaseCats] = processVars(otherVars.ExtensiveDiverticularDisease, {'none', 'mild', 'extensive', 'unknown'}, {'.*none.*', '.*no.*'}, {'.*mild.*', '.*moderate.*'},{'.*extensive.*', '.*yes.*', '.*severe.*'}, {'.*unknown.*','.*N/A.*',''});
+        
+        %Looping
+        loopingTemp_raw = otherVars.DegreeOfLooping;
+        [looping, loopingCats] = processVars(otherVars.DegreeOfLooping, {'low', 'medium', 'high', 'unknown/N/A'}, {'.*none.*', '.*low.*', '.*no.*'}, {'.*mild.*', '.*moderate.*', '.*medium.*'},{'.*extensive.*', '.*high.*', '.*severe.*'}, {'.*unknown.*','.*N/A.*',''});
+        
+        % Discomfort
+        discomfortTemp_raw = otherVars.PatientDiscomfort;
+        [discomfort, discomfortCats] = processVars(otherVars.PatientDiscomfort, {'low', 'medium', 'high', 'unknown'}, {'.*none.*', '.*low.*', '.*no.*'}, {'.*mild.*', '.*moderate.*', '.*medium.*'},{'.*extensive.*', '.*high.*', '.*severe.*'}, {'.*unknown.*','.*N/A.*',''});
+       
+        % Hiatus hernia
+        hiatusHerniaTemp_raw = otherVars.HiatusHernia;
+        if (isnumeric(hiatusHerniaTemp_raw))
+            hiatusHernia = categorical(~isnan(hiatusHerniaTemp_raw)+1,1:2,{'no', 'yes'});
+            hiatusHerniaCats = categories(hiatusHernia);
+        else
+            [hiatusHernia, hiatusHerniaCats] = processVars(otherVars.HiatusHernia, {'no', 'yes', 'unknown'}, {'.*none.*', '.*[0].*', '.*no.*'}, {'.*[1-9]?[0-9]*.*', '.*yes.*', '.*massive.*'}, {'.*unknown.*','.*N/A.*',''});
+        end
+        
+        % Suctioning
+        suctioningTemp_raw = otherVars.UseOfIntermittentSuctioning;
+        [suctioning, suctioningCats] = processVars(otherVars.UseOfIntermittentSuctioning, {'no', 'yes', 'unknown/NA'}, {'.*none.*', '.*no.*'}, {'.*yes.*', '.*y.*'}, {'.*unknown.*','.*N/A.*',''});
+       
         a = 1;
     else
         T = readtable(filepath,'ReadVariableNames', true, 'HeaderLines',0);
@@ -180,7 +216,7 @@ for fileIdx = 1:nFiles
 
 
     nEvents = size(indices,1);
-    nPatients = size(patientNos,1);
+    nPatients = size(unique(patientNos),1);
 
     maxDiameter = 25; % Should load this from datasheet?
     diameters = [diameters; maxDiameter];
@@ -235,14 +271,23 @@ for fileIdx = 1:nFiles
 
         data_v = data .* repmat(currentVols,1, size(data,2));
 
-        % Densities so that a probability density approach can be used
-        data_v_density = data_v ./ repmat(currentLogBinSizes,1, size(data,2)); %Try using log binsizes
-        data_density = data ./ repmat(currentLogBinSizes,1, size(data,2));
-
         tempValid = ~isnan(data);
         tempValid = nansum(tempValid,1) > 0;
         avSampleTime = median(diff(time(tempValid)));
         avSampleTimes(currentIdx) = avSampleTime;
+        
+        correctForAT = true; %AeroTrak time is the start of the sample
+        if correctForAT
+            data = circshift(data, avSampleTime);
+            data(1:avSampleTime) = NaN;
+            data_v = circshift(data_v, avSampleTime);
+            data_v(1:avSampleTime) = NaN;
+        end
+        
+        % Densities so that a probability density approach can be used
+        data_v_density = data_v ./ repmat(currentLogBinSizes,1, size(data,2)); %Try using log binsizes
+        data_density = data ./ repmat(currentLogBinSizes,1, size(data,2));
+        
         [bg_current, fg_current] = splitBGFG(data, avSampleTime, tempValid);
 
         bg_current_v = bg_current .* repmat(currentVols,1, size(data,2));
@@ -428,15 +473,25 @@ for fileIdx = 1:nFiles
         for k = 1:size(sample_preInt,3)
             cumdt = 0;
             cumdd = zeros(size(sample_preInt,1),1);
+            realWindowSize = 0;
+                   
             for kk=1:size(sample_preInt,2)
 
                 if (kk <= rawdiffwindowSize_after)
                     cumdt = cumdt + 1;
                 end
+                
+                if cumdt > avSampleTimes(k)
+                    cumdd = cumdd - lastSample;
+                    realWindowSize = realWindowSize - avSampleTimes(k); %In case there aren't enough afterwards
+                    break;
+                end
 
                 if ~all(isnan(sample_preInt(:,kk,k)))
-                    cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+                    lastSample = sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
+                    cumdd = cumdd + lastSample;
 
+                    realWindowSize = realWindowSize+cumdt;
                     cumdt = 0;
 
                     if kk >= rawdiffwindowSize_after
@@ -446,12 +501,13 @@ for fileIdx = 1:nFiles
 
             end
 
-            cumdd = cumdd/rawdiffwindowSize_after;
+            cumdd = cumdd/realWindowSize;
             sample_int_raw_after_all(:,k) = cumdd;
         end
 
+        %Integrate before
         windowEnd = windowStart;
-        rawdiffwindowSize_before = 50;
+        rawdiffwindowSize_before = 100;
         windowStart = windowEnd - rawdiffwindowSize_before;
 
         sampleValid = time > windowStart & time <= (windowStart + rawdiffwindowSize_before + buffer);
@@ -461,6 +517,7 @@ for fileIdx = 1:nFiles
         for k = 1:size(sample_preInt,3)
             cumdt = 0;
             cumdd = zeros(size(sample_preInt,1),1);
+            realWindowSize = 0;
             for kk=1:size(sample_preInt,2)
 
                 if (kk <= rawdiffwindowSize_before)
@@ -468,8 +525,13 @@ for fileIdx = 1:nFiles
                 end
 
                 if ~all(isnan(sample_preInt(:,kk,k)))
+                    if cumdt > avSampleTimes(k)
+                        cumdt = avSampleTimes(k); % In case there aren't enough samples before
+                    end
+                    
                     cumdd = cumdd + sample_preInt(:,kk,k) * cumdt./avSampleTimes(k);
 
+                    realWindowSize = realWindowSize+cumdt;
                     cumdt = 0;
 
                     if kk >= rawdiffwindowSize_before
@@ -479,7 +541,7 @@ for fileIdx = 1:nFiles
 
             end
 
-            cumdd = cumdd/rawdiffwindowSize_before;
+            cumdd = cumdd/realWindowSize;
             sample_int_raw_before_all(:,k) = cumdd;
 
         end
@@ -562,9 +624,12 @@ for fileIdx = 1:nFiles
             mu_v_diff(k) = mu_v_t;
             sigma_v_diff(k) = sigma_v_t;
             
-            %[A_v_est2, mu_v_t2, sigma_v_t2] = fitAerosolDist(currentDiameters.', (currentData.*currentVols./currentLogBinSizes)','fitType','volume', 'mu_LB', log(0.1), 'mu_UB', log(20), 'sig_LB', 0.2, 'sig_UB', 50, 'tubeCorrection', correctionVal, 'fullDiameters', diameters_2(:,k));
-           
-            %a = 1;
+            directFit_v = false;
+            if directFit_v
+                [A_v_est2, mu_v_t2, sigma_v_t2] = fitAerosolDist(currentDiameters.', (currentData.*currentVols./currentLogBinSizes)','fitType','volume', 'mu_LB', log(0.1), 'mu_UB', log(20), 'sig_LB', 0.2, 'sig_UB', 50, 'tubeCorrection', correctionVal, 'fullDiameters', diameters_2(:,k));
+                mu_v_diff(k) = mu_v_t2;
+                sigma_v_diff(k) = sigma_v_t2;
+            end
 
         end
 
@@ -587,6 +652,8 @@ for fileIdx = 1:nFiles
             noiseStd = noiseStd_UG;
             noiseMean_v = noiseMean_v_UG;
             noiseStd_v = noiseStd_v_UG;
+            
+            reject = false(size(A_diff));
         elseif isLGI_nullref
             [A_marg_n_mu, A_marg_n_sig] = normfit(A_diff);
             noiseMean_LG = 0;
@@ -601,6 +668,8 @@ for fileIdx = 1:nFiles
             noiseStd = noiseStd_LG;
             noiseMean_v = noiseMean_v_LG;
             noiseStd_v = noiseStd_v_LG;
+            
+            reject = false(size(A_diff));
         else
             fitLogNorm = true;
             if (fitLogNorm) % Fix should fit sum of lognorm and noise
@@ -629,7 +698,7 @@ for fileIdx = 1:nFiles
                 A_diff_trunc_zeros = A_diff(A_diff>0);
                 A_marg_ln_hat = lognfit(A_diff_trunc_zeros);
                 A_diff_trunc = A_diff(~reject);
-                objFun = @(x) -1*sum(sumLognormNormpdf(A_diff_trunc, x(1),x(2),0,noiseStd));
+                objFun = @(x) -1*sum(sumLognormNormpdf(A_diff_trunc, x(1),x(2),0,noiseStd,1e5));
                 
                 if isnan(A_marg_ln_hat(1))
                     A_marg_ln_hat(1) = 7;
@@ -648,16 +717,16 @@ for fileIdx = 1:nFiles
                 A_marg_ln_hat = bestVal;
                 
                 % Fit vol
-                reject = A_v_diff < -3*noiseStd_v; % Reject points that are probably errors
+                reject_v = A_v_diff < -3*noiseStd_v; % Reject points that are probably errors
                 
-                if nnz(~reject) == 0
-                    reject = false(size(reject));
+                if nnz(~reject_v) == 0
+                    reject_v = false(size(reject_v));
                 end
 
                 A_v_diff_trunc_zeros = A_v_diff(A_v_diff>0);
                 A_v_marg_ln_hat = lognfit(A_v_diff_trunc_zeros);
-                A_v_diff_trunc = A_v_diff(~reject);
-                objFun = @(x) -1*sum(sumLognormNormpdf(A_v_diff_trunc, x(1),x(2),0,noiseStd_v));
+                A_v_diff_trunc = A_v_diff(~reject_v);
+                objFun = @(x) -1*sum(sumLognormNormpdf(A_v_diff_trunc, x(1),x(2),0,noiseStd_v, 1e5));
                 
                 if isnan(A_v_marg_ln_hat(1))
                     A_v_marg_ln_hat(1) = 7;
@@ -768,8 +837,10 @@ for fileIdx = 1:nFiles
         ylabel('sigma');
         title('Joint distribution \sigma vs #');
         
-        saveas(gcf,[label,'_stats.fig']);
-        saveas(gcf,[label,'_stats.png']);
+        if (saveFigs)
+            saveas(gcf,fullfile(folder, [label,'_stats.fig']));
+            saveas(gcf,fullfile(folder, [label,'_stats.png']));
+        end
         
         %% Now plot volumes    
         A_v_plot = linspace(-2e-13,5e-12,200);
@@ -841,8 +912,10 @@ for fileIdx = 1:nFiles
         ylabel('sigma');
         title('Joint distribution \sigma vs #');
         
-        saveas(gcf,[label,'_v_stats.fig']);
-        saveas(gcf,[label,'_v_stats.png']);
+        if saveFigs
+            saveas(gcf,fullfile(folder, [label,'_v_stats.fig']));
+            saveas(gcf,fullfile(folder, [label,'_v_stats.png']));
+        end
     end
     
     %% Now compile table
@@ -886,14 +959,40 @@ for fileIdx = 1:nFiles
     resultsTable.sig_a_v(fileIdx) = sig_v_marg_hat(1);
     resultsTable.sig_b_v(fileIdx) = sig_v_marg_hat(2);
     
-    resultsTable.n_raw(fileIdx) = {A_diff};
-    resultsTable.v_raw(fileIdx) = {A_v_diff};
-    resultsTable.mu_raw(fileIdx) = {mu_diff};
-    resultsTable.mu_v_raw(fileIdx) = {mu_v_diff};
+    resultsTable.n_raw(fileIdx) = {A_diff(~reject)}; %Truncate
+    resultsTable.v_raw(fileIdx) = {A_v_diff(~reject)};
+    resultsTable.mu_raw(fileIdx) = {mu_diff(~reject)};
+    resultsTable.mu_v_raw(fileIdx) = {mu_v_diff(~reject)};
     
-    resultsTable.age(fileIdx) = {otherVars.Age};
-    resultsTable.bmi(fileIdx) = {otherVars.BMI};
-    resultsTable.sedation(fileIdx) = {sedation};
+    resultsTable.age(fileIdx) = {otherVars.Age(~reject)};
+    resultsTable.bmi(fileIdx) = {otherVars.BMI(~reject)};
+    resultsTable.sedation(fileIdx) = {sedation(~reject)};
+    resultsTable.analTone(fileIdx) = {analTone(~reject)};
+    resultsTable.useOfCO2OrWater(fileIdx) = {useOfCO2orWater(~reject)};
+    resultsTable.isSmoker(fileIdx) = {isSmoker(~reject)};
+    resultsTable.usesPatientMask(fileIdx) = {usesPatientMask(~reject)};
+    resultsTable.patientNos(fileIdx) = {patientNos(~reject)};
+    resultsTable.roomType(fileIdx) = {roomType(~reject)};
+    resultsTable.ugiRoute(fileIdx) = {ugiRoute(~reject)};
+    resultsTable.diverticularDisease(fileIdx) = {diverticularDisease(~reject)};
+    resultsTable.looping(fileIdx) = {looping(~reject)};
+    resultsTable.discomfort(fileIdx) = {discomfort(~reject)};
+    resultsTable.hiatusHernia(fileIdx) = {hiatusHernia(~reject)};
+    resultsTable.suctioning(fileIdx) = {suctioning(~reject)};
+    
+    % Compute pvals
+    for tempIdx = 1:fileIdx-1
+        event1 = resultsTable.n_raw{tempIdx};
+        event1 = event1(:);
+        event2 = resultsTable.n_raw{fileIdx};
+        event2 = event2(:);
+        [pMu, pSig] = computeSignificance(event1, event2, noiseMean, noiseStd, resultsTable.mean_n(tempIdx), resultsTable.std_n(tempIdx), resultsTable.mean_n(fileIdx), resultsTable.std_n(fileIdx));
+        pMu = min([pMu, 1-pMu]);
+        pSig = min([pSig, 1-pSig]);
+     
+        pMuTable(fileIdx, tempIdx) = pMu;
+        pSigTable(fileIdx, tempIdx) = pSig;
+    end
     
     data_box = [];
     data_v_box = [];
@@ -918,7 +1017,7 @@ for fileIdx = 1:nFiles
         data_v_box = [data_v_box; currentRaw_v];
         
         temp = resultsTable.n_raw(dataSetIdx);
-        if (max(temp{1}) > noiseMean + 3 *noiseStd)
+        if (max(temp{1}) > noiseMean + 3 *noiseStd) % Don't plot if not statistically significant
             mu_box = [mu_box; currentRaw_mu_n;];
             mu_v_box = [mu_v_box; currentRaw_mu_v;];
         else
@@ -944,6 +1043,7 @@ for fileIdx = 1:nFiles
     figure(boxFig_n);
     clf;
     boxplot(data_box,cats_box);
+    tempCats_ = unique(cats_box);
     set(gca,'TickLabelInterpreter', 'none');
     xtickangle(60);
     hold on;
@@ -952,14 +1052,30 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(data_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
-        set(ht,'Rotation',60)
-    end
+        ht = text(tempIdx,max(data_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        set(ht,'Rotation',60);
+        
+        tempD1 = resultsTable.n_raw{tempIdx};
+        tempD1 = tempD1(:);
+        tempD2 = resultsTable.n_raw{fileIdx};
+        tempD2 = tempD2(:);
+        
+       if (fileIdx > 1)
+           if pMuTable(fileIdx, tempIdx) <= 0.05 || pSigTable(fileIdx, tempIdx) <= 0.05
+                computeAndPlotPvals(tempD1,tempD2,[],[],tempIdx, fileIdx,'pMeanIn', pMuTable(fileIdx, tempIdx), 'pSigIn', pSigTable(fileIdx, tempIdx));
+           end
+       end
+    end   
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['particle_number_box'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
     end
+    
+ 
 
     
     figure(violinFig_n);
@@ -973,9 +1089,12 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(data_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(data_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['particle_number_violin'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
@@ -993,9 +1112,12 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(data_v_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(data_v_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['particle_volume_box'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
@@ -1015,9 +1137,12 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(data_v_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(data_v_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['particle_volume_violin'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
@@ -1041,9 +1166,12 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(mu_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(mu_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['diameter_number_box'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
@@ -1067,9 +1195,12 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(mu_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(mu_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['diameter_number_violin'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
@@ -1093,9 +1224,12 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(mu_v_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(mu_v_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['diameter_volume_box'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
@@ -1119,80 +1253,380 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx
         currentNevent = resultsTable.Nevents(tempIdx);
         currentNpatient = resultsTable.Npatients(tempIdx);
-        ht = text(tempIdx,max(mu_v_box)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+        ht = text(tempIdx,max(mu_v_box(cats_box == tempCats_(tempIdx)))*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
         set(ht, 'Rotation', 60);
     end
+    tempPos = get(gca, 'Position');
+    s = 0.9;
+    set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
     if saveFigs
         saveFigName = ['diameter_volume_violin'];
         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
     end
     
+    %% Now plot variables
     if (fileIdx == 1)
         sedationFig_n = figure;
+        analToneFig_n = figure;
+        co2vWaterFig_n = figure;
+        smokerFig_n = figure;
+        maskFig_n = figure;
+        roomTypeFig_n = figure;
+        ugiRouteFig_n = figure;
+        divertDiseaseFig_n = figure;
+        loopingFig_n = figure;
+        discomfortFig_n = figure;
+        hiatusFig_n = figure;
+        suctioningFig_n = figure;
         ageFig_n = figure;
         bmiFig_n = figure;
-       
+        
+        varFigs(1).fig = sedationFig_n;
+        varFigs(1).varname = 'sedation';
+        varFigs(1).type = 'discrete';
+        varFigs(2).fig = analToneFig_n;
+        varFigs(2).varname = 'analTone';
+        varFigs(2).type = 'discrete';
+        varFigs(3).fig = co2vWaterFig_n;
+        varFigs(3).varname = 'useOfCO2OrWater';
+        varFigs(3).type = 'discrete';
+        varFigs(4).fig = smokerFig_n;
+        varFigs(4).varname = 'isSmoker';
+        varFigs(4).type = 'discrete';
+        varFigs(5).fig = maskFig_n;
+        varFigs(5).varname = 'usesPatientMask';
+        varFigs(5).type = 'discrete';
+        varFigs(6).fig = roomTypeFig_n;
+        varFigs(6).varname = 'roomType';
+        varFigs(6).type = 'discrete';
+        varFigs(7).fig = ugiRouteFig_n;
+        varFigs(7).varname = 'ugiRoute';
+        varFigs(7).type = 'discrete';
+        varFigs(8).fig = divertDiseaseFig_n;
+        varFigs(8).varname = 'diverticularDisease';
+        varFigs(8).type = 'discrete';
+        varFigs(9).fig = loopingFig_n;
+        varFigs(9).varname = 'looping';
+        varFigs(9).type = 'discrete';
+        varFigs(10).fig = discomfortFig_n;
+        varFigs(10).varname = 'discomfort';
+        varFigs(10).type = 'discrete';
+        varFigs(11).fig = hiatusFig_n;
+        varFigs(11).varname = 'hiatusHernia';
+        varFigs(11).type = 'discrete';
+        varFigs(12).fig = suctioningFig_n;
+        varFigs(12).varname = 'suctioning';
+        varFigs(12).type = 'discrete';
+        varFigs(13).fig = ageFig_n;
+        varFigs(13).varname = 'age';
+        varFigs(13).type = 'continuous';
+        varFigs(14).fig = bmiFig_n;
+        varFigs(14).varname = 'bmi';
+        varFigs(14).type = 'continuous';
         %repeat for volume
     end
     
-    figure(sedationFig_n);
-    clf;
-    temp = resultsTable.sedation(fileIdx);
-    temp = temp{1};
-    temp_n = resultsTable.n_raw(fileIdx);
-    temp_n = temp_n{1};
-    boxplot(temp_n, temp);
-    ylabel('Number of particles/m^3/s');
-    title(resultsTable.label(fileIdx), 'Interpreter', 'none');
-    currentNevent = resultsTable.Nevents(fileIdx);
-    currentNpatient = resultsTable.Npatients(fileIdx);
-    ht = text(1,max(temp_n)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
-    if saveFigs
-        saveFigName = [label, '_sedation'];
-        saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
-        saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+    for k=1:size(varFigs,2)
+        figure(varFigs(k).fig);
+        clf;
+        eval(['temp = resultsTable.', varFigs(k).varname, '(fileIdx)']);
+        temp = temp{1};
+        temp_n = resultsTable.n_raw(fileIdx);
+        temp_n = temp_n{1};
+        if strcmpi(varFigs(k).type, 'discrete')
+            boxplot(temp_n, temp);
+            tempCats = unique(temp);
+            nCats = size(tempCats,1);
+            for catIdx = 1:nCats
+                currentNevent = nnz(temp == tempCats(catIdx));
+                currentVals = temp_n(temp == tempCats(catIdx));
+                temp_p_no = resultsTable.patientNos(fileIdx);
+                temp_p_no = temp_p_no{1};
+                currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
+                ht = text(catIdx,max(currentVals)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+                set(ht, 'Rotation', 60);
+            end
+            if nCats > 1
+                for cat1Idx = 1:nCats
+                     for cat2Idx = cat1Idx+1:nCats                 
+                         val1 = temp == tempCats(cat1Idx);
+                         val2 = temp == tempCats(cat2Idx);
+
+                         d1 = temp_n(val1);
+                         d2 = temp_n(val2);
+
+                         computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx);
+                     end
+                end
+            end
+            tempPos = get(gca, 'Position');
+            s = 0.9;
+            set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
+        else
+            scatter(temp, temp_n, 'bx', 'LineWidth',1.5);
+            ylabel('Number of particles/m^3/s');
+            xlabel('Age');
+            title(resultsTable.label(fileIdx), 'Interpreter', 'none')
+            currentNevent = resultsTable.Nevents(fileIdx);
+            currentNpatient = resultsTable.Npatients(fileIdx);
+            ht = text(min(temp)*1.05,max(temp_n)*0.9,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+
+            newx = linspace(min(temp),max(temp),100);
+            [fitresult, gof, ~] = fit(temp(:),temp_n(:),'poly1');
+            yfit = feval(fitresult,newx);
+            p21 = predint(fitresult,newx,0.95,'functional','off');
+            hold on;
+            plot(newx, yfit, 'k');
+            plot(newx, p21, 'm--');
+            text(min(newx)*1.1, max(temp_n)*0.8,['r = ', num2str(gof.rsquare)]);
+            hold off;
+        end
+        
+        ylabel('Number of particles/m^3/s');
+        xlabel(varFigs(k).varname);
+        title(resultsTable.label(fileIdx), 'Interpreter', 'none');
+        
+        if saveFigs
+            saveFigName = [label, '_', varFigs(k).varname];
+            saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+            saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+        end
     end
+%     
+%     figure(analToneFig_n);
+%     clf;
+%     temp = resultsTable.analTone(fileIdx);
+%     temp = temp{1};
+%     temp_n = resultsTable.n_raw(fileIdx);
+%     temp_n = temp_n{1};
+%     boxplot(temp_n, temp);
+%     ylabel('Number of particles/m^3/s');
+%     xlabel('Anal tone');
+%     title(resultsTable.label(fileIdx), 'Interpreter', 'none');
+%     tempCats = unique(temp);
+%     nCats = size(tempCats,1);
+%     for catIdx = 1:nCats
+%         currentNevent = nnz(temp == tempCats(catIdx));
+%         currentVals = temp_n(temp == tempCats(catIdx));
+%         temp_p_no = resultsTable.patientNos(fileIdx);
+%         temp_p_no = temp_p_no{1};
+%         currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
+%         ht = text(catIdx,max(currentVals)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+%         set(ht, 'Rotation', 60);
+%     end
+%     if nCats > 1
+%         for cat1Idx = 1:nCats
+%              for cat2Idx = cat1Idx+1:nCats                 
+%                  val1 = temp == tempCats(cat1Idx);
+%                  val2 = temp == tempCats(cat2Idx);
+%                  
+%                  d1 = temp_n(val1);
+%                  d2 = temp_n(val2);
+%                  
+%                  computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx);
+%              end
+%         end
+%     end
+%     tempPos = get(gca, 'Position');
+%     s = 0.9;
+%     set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
+%     if saveFigs
+%         saveFigName = [label, '_analtone'];
+%         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+%         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+%     end
+%     
+%     figure(co2vWaterFig_n);
+%     clf;
+%     temp = resultsTable.useOfCO2OrWater(fileIdx);
+%     temp = temp{1};
+%     temp_n = resultsTable.n_raw(fileIdx);
+%     temp_n = temp_n{1};
+%     boxplot(temp_n, temp);
+%     ylabel('Number of particles/m^3/s');
+%     xlabel('Use of CO_2 vs. water');
+%     title(resultsTable.label(fileIdx), 'Interpreter', 'none');
+%     tempCats = unique(temp);
+%     nCats = size(tempCats,1);
+%     for catIdx = 1:nCats
+%         currentNevent = nnz(temp == tempCats(catIdx));
+%         currentVals = temp_n(temp == tempCats(catIdx));
+%         temp_p_no = resultsTable.patientNos(fileIdx);
+%         temp_p_no = temp_p_no{1};
+%         currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
+%         ht = text(catIdx,max(currentVals)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+%         set(ht, 'Rotation', 60);
+%     end
+%     if nCats > 1
+%         for cat1Idx = 1:nCats
+%              for cat2Idx = cat1Idx+1:nCats                 
+%                  val1 = temp == tempCats(cat1Idx);
+%                  val2 = temp == tempCats(cat2Idx);
+%                  
+%                  d1 = temp_n(val1);
+%                  d2 = temp_n(val2);
+%                  
+%                  computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx);
+%              end
+%         end
+%     end
+%     tempPos = get(gca, 'Position');
+%     s = 0.9;
+%     set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
+%     if saveFigs
+%         saveFigName = [label, '_CO2orWater'];
+%         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+%         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+%     end
+%     
+%     figure(smokerFig_n);
+%     clf;
+%     temp = resultsTable.isSmoker(fileIdx);
+%     temp = temp{1};
+%     temp_n = resultsTable.n_raw(fileIdx);
+%     temp_n = temp_n{1};
+%     boxplot(temp_n, temp);
+%     ylabel('Number of particles/m^3/s');
+%     xlabel('Smoker');
+%     title(resultsTable.label(fileIdx), 'Interpreter', 'none');
+%     tempCats = unique(temp);
+%     nCats = size(tempCats,1);
+%     for catIdx = 1:nCats
+%         currentNevent = nnz(temp == tempCats(catIdx));
+%         currentVals = temp_n(temp == tempCats(catIdx));
+%         temp_p_no = resultsTable.patientNos(fileIdx);
+%         temp_p_no = temp_p_no{1};
+%         currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
+%         ht = text(catIdx,max(currentVals)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+%         set(ht, 'Rotation', 60);
+%     end
+%     if nCats > 1
+%         for cat1Idx = 1:nCats
+%              for cat2Idx = cat1Idx+1:nCats                 
+%                  val1 = temp == tempCats(cat1Idx);
+%                  val2 = temp == tempCats(cat2Idx);
+%                  
+%                  d1 = temp_n(val1);
+%                  d2 = temp_n(val2);
+%                  
+%                  computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx);
+%              end
+%         end
+%     end
+%     tempPos = get(gca, 'Position');
+%     s = 0.9;
+%     set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
+%     if saveFigs
+%         saveFigName = [label, '_smoker'];
+%         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+%         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+%     end
+%     
+%     figure(maskFig_n);
+%     clf;
+%     temp = resultsTable.usesPatientMask(fileIdx);
+%     temp = temp{1};
+%     temp_n = resultsTable.n_raw(fileIdx);
+%     temp_n = temp_n{1};
+%     boxplot(temp_n, temp);
+%     ylabel('Number of particles/m^3/s');
+%     xlabel('Patient mask');
+%     title(resultsTable.label(fileIdx), 'Interpreter', 'none');
+%     tempCats = unique(temp);
+%     nCats = size(tempCats,1);
+%     for catIdx = 1:nCats
+%         currentNevent = nnz(temp == tempCats(catIdx));
+%         currentVals = temp_n(temp == tempCats(catIdx));
+%         temp_p_no = resultsTable.patientNos(fileIdx);
+%         temp_p_no = temp_p_no{1};
+%         currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
+%         ht = text(catIdx,max(currentVals)*0.9,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+%         set(ht, 'Rotation', 60);
+%     end
+%     if nCats > 1
+%         for cat1Idx = 1:nCats
+%              for cat2Idx = cat1Idx+1:nCats                 
+%                  val1 = temp == tempCats(cat1Idx);
+%                  val2 = temp == tempCats(cat2Idx);
+%                  
+%                  d1 = temp_n(val1);
+%                  d2 = temp_n(val2);
+%                  
+%                  computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx);
+%              end
+%         end
+%     end
+%     tempPos = get(gca, 'Position');
+%     s = 0.9;
+%     set(gca,'Position', [tempPos(1)+tempPos(3)*(1-s)/2, tempPos(2)+tempPos(4)*(1-s)/2,tempPos(3)*s, tempPos(4)*s]);
+%     if saveFigs
+%         saveFigName = [label, '_mask'];
+%         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+%         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+%     end
     
-    figure(ageFig_n);
-    clf;
-    temp = resultsTable.age(fileIdx);
-    temp = temp{1};
-    temp_n = resultsTable.n_raw(fileIdx);
-    temp_n = temp_n{1};
-    scatter(temp, temp_n, 'bx', 'LineWidth',1.5);
-    ylabel('Number of particles/m^3/s');
-    xlabel('Age');
-    title(resultsTable.label(fileIdx), 'Interpreter', 'none')
-    currentNevent = resultsTable.Nevents(fileIdx);
-    currentNpatient = resultsTable.Npatients(fileIdx);
-    ht = text(min(temp)*1.05,max(temp_n)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
-    if saveFigs
-        saveFigName = [label, '_age'];
-        saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
-        saveas(gcf,fullfile(folder,[saveFigName, '.png']));
-    end
+%     figure(ageFig_n);
+%     clf;
+%     temp = resultsTable.age(fileIdx);
+%     temp = temp{1};
+%     temp_n = resultsTable.n_raw(fileIdx);
+%     temp_n = temp_n{1};
+%     scatter(temp, temp_n, 'bx', 'LineWidth',1.5);
+%     ylabel('Number of particles/m^3/s');
+%     xlabel('Age');
+%     title(resultsTable.label(fileIdx), 'Interpreter', 'none')
+%     currentNevent = resultsTable.Nevents(fileIdx);
+%     currentNpatient = resultsTable.Npatients(fileIdx);
+%     ht = text(min(temp)*1.05,max(temp_n)*0.9,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+%     
+%     newx = linspace(min(temp),max(temp),100);
+%     [fitresult, gof, ~] = fit(temp(:),temp_n(:),'poly1');
+%     yfit = feval(fitresult,newx);
+%     p21 = predint(fitresult,newx,0.95,'functional','off');
+%     hold on;
+%     plot(newx, yfit, 'k');
+%     plot(newx, p21, 'm--');
+%     text(min(newx)*1.1, max(temp_n)*0.8,['r = ', num2str(gof.rsquare)]);
+%     hold off;
+%     
+%     if saveFigs
+%         saveFigName = [label, '_age'];
+%         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+%         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+%     end
+%     
+%     
+%     figure(bmiFig_n);
+%     clf;
+%     temp = resultsTable.bmi(fileIdx);
+%     temp = temp{1};
+%     temp_n = resultsTable.n_raw(fileIdx);
+%     temp_n = temp_n{1};
+%     scatter(temp, temp_n, 'bx', 'LineWidth',1.5);
+%     ylabel('Number of particles/m^3/s');
+%     xlabel('Bmi');
+%     title(resultsTable.label(fileIdx), 'Interpreter', 'none');
+%     currentNevent = resultsTable.Nevents(fileIdx);
+%     currentNpatient = resultsTable.Npatients(fileIdx);
+%     ht = text(min(temp)*1.05,max(temp_n)*0.9,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+%     newx = linspace(min(temp),max(temp),100);
+%     [fitresult, gof, ~] = fit(temp(:),temp_n(:),'poly1');
+%     yfit = feval(fitresult,newx);
+%     p21 = predint(fitresult,newx,0.95,'functional','off');
+%     hold on;
+%     plot(newx, yfit, 'k');
+%     plot(newx, p21, 'm--');
+%     text(min(newx)*1.1, max(temp_n)*0.8,['r = ', num2str(gof.rsquare)]);
+%     hold off;
+%     if saveFigs
+%         saveFigName = [label, '_bmi'];
+%         saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
+%         saveas(gcf,fullfile(folder,[saveFigName, '.png']));
+%     end
     
-    
-    figure(bmiFig_n);
-    clf;
-    temp = resultsTable.bmi(fileIdx);
-    temp = temp{1};
-    temp_n = resultsTable.n_raw(fileIdx);
-    temp_n = temp_n{1};
-    scatter(temp, temp_n, 'bx', 'LineWidth',1.5);
-    ylabel('Number of particles/m^3/s');
-    xlabel('Bmi');
-    title(resultsTable.label(fileIdx), 'Interpreter', 'none');
-    currentNevent = resultsTable.Nevents(fileIdx);
-    currentNpatient = resultsTable.Npatients(fileIdx);
-    ht = text(min(temp)*1.05,max(temp_n)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
-    if saveFigs
-        saveFigName = [label, '_bmi'];
-        saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
-        saveas(gcf,fullfile(folder,[saveFigName, '.png']));
-    end
-    
+    %% Save results table
+    save(fullfile(folder,'resultsTable.mat'), 'resultsTable', 'pMuTable', 'pSigTable');
     
     %%
     useFGBGapproach = false;

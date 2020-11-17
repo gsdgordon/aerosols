@@ -1,4 +1,4 @@
-function logprob = sumLognormNormpdf(x, mu_ln, sig_ln, mu_n, sig_n)
+function [logprob, norm_const] = sumLognormNormpdf(x, mu_ln, sig_ln, mu_n, sig_n, nVals)
 
     startVal_all = mu_n - 10*sig_n;
     endVal_n = mu_n + 10*sig_n;
@@ -8,9 +8,9 @@ function logprob = sumLognormNormpdf(x, mu_ln, sig_ln, mu_n, sig_n)
 %     endVal_ln = 1e5;
 
 
-    nVals = 1e5;
+    %nVals = 1e4;
 
-    xVals_ln = linspace(startVal_all, endVal_ln, nVals);
+    xVals_ln = linspace(min(startVal_all), max(endVal_ln), nVals);
     dx = xVals_ln(2) - xVals_ln(1);
     xVals_n = startVal_all:dx:endVal_n;
 
