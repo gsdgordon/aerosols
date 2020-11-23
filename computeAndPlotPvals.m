@@ -54,22 +54,24 @@ function [pMean, pSig] = computeAndPlotPvals(d1, d2, noiseMean, noiseStd, cat1Id
         pSig = pSigIn;
     end
 
-     tempYlim = ylim;
-     dY = 0.08*tempYlim(2);
-     yVal = max([d1(:); d2(:)]) + dY*(cat2Idx - cat1Idx);
-     xVal = [cat1Idx, cat2Idx];
-     ctr = mean(xVal);
-     
-     pMean = min([pMean, 1-pMean]);
-     pSig = min([pSig, 1-pSig]);
+    pMean = min([pMean, 1-pMean]);
+    pSig = min([pSig, 1-pSig]);
+    
+    if (pMean <= 0.05) || (pSig <= 0.05)
+        tempYlim = ylim;
+        dY = 0.08*tempYlim(2);
+        yVal = max([d1(:); d2(:)]) + dY*(cat2Idx - cat1Idx);
+        xVal = [cat1Idx, cat2Idx];
+        ctr = mean(xVal);
 
-     hold on;
-     plot(xVal, [yVal, yVal], '-b', 'LineWidth', 2);
-     oldYlim = ylim;
-     newYMax = max([yVal*1.1, oldYlim(2)]);
-     ylim([oldYlim(1), newYMax]);
-     text(ctr, yVal+dY, ['p_{\mu}=',num2str(pMean), ', p_{\sigma}', num2str(pSig)], 'HorizontalAlignment', 'Center', 'Color', 'blue');
-     hold off;
-                 
+        hold on;
+        plot(xVal, [yVal, yVal], '-b', 'LineWidth', 2);
+        oldYlim = ylim;
+        newYMax = max([yVal*1.1, oldYlim(2)]);
+        ylim([oldYlim(1), newYMax]);
+        text(ctr, yVal+dY, ['p_{\mu}=',num2str(pMean), ', p_{\sigma}', num2str(pSig)], 'HorizontalAlignment', 'Center', 'Color', 'blue');
+        hold off;
+    end
+
          
 end
