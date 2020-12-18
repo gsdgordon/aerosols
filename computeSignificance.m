@@ -23,6 +23,7 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
 
     dataSet1 = dataSet1(:);
     dataSet2 = dataSet2(:);
+    
     useRejection = true;
     
     if useRejection
@@ -49,9 +50,12 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
             N_curr = N_start;
             while (nSamples < minSamples)
 
-                %mu1_samples = unifrnd(minMu, maxMu,[1,N]);
-                mu1_samples = log(unifrnd(exp(minMu), exp(maxMu),[1,N_curr]));
+                mu1_samples = unifrnd(minMu, maxMu,[1,N_curr]);
+                mu1_samples(end) = initMu1;
+                dmu1 = exp(mu1_samples);
+                %mu1_samples = log(unifrnd(exp(minMu), exp(maxMu),[1,N_curr]));
                 sig1_samples = unifrnd(minSig, maxSig,[1,N_curr]);
+                sig1_samples(end) = initSig1;
 
                 ppm = ParforProgressbar(N_curr, 'parpool', {'local', 8});
                 logprobs1 = zeros(1,N_curr);
@@ -67,7 +71,8 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
 
                 delete(ppm);
 
-                validProbs = ~isinf(logprobs1) & ~isnan(logprobs1) & (logprobs1 < 0);
+                logprobs1 = logprobs1 + log(dmu1);
+                validProbs = ~isinf(logprobs1) & ~isnan(logprobs1);% & (logprobs1 < 0);
                 logprobs1 = logprobs1(validProbs);
 
                 probNorm_log = max(logprobs1);
@@ -82,13 +87,20 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
 
                 incFac = minSamples/nSamples;
                 N_curr = ceil(1.05*(incFac) * N_curr);
+                
+                %N_curr = min(N_curr, N_start*10);
+                
+                %minMu_curr = min(mu1_samples_rej);
+                %maxMu_curr = max(mu1_samples_rej);
+                
+                
             end
         else
             mu1_samples_rej = inputSamples1(:,1);
             sig1_samples_rej = inputSamples1(:,2);
         end
         
-        samples1 = [mu1_samples_rej(:), sig1_samples_rej(:)];
+        %samples1 = [mu1_samples_rej(:), sig1_samples_rej(:)];
         
         %% second data set
         if isempty(inputSamples2)
@@ -97,9 +109,12 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
             sig2_samples_rej = [];
             N_curr = N_start;
             while (nSamples < minSamples)
-                %mu2_samples = unifrnd(minMu, maxMu,[1,N]);
-                mu2_samples = log(unifrnd(exp(minMu), exp(maxMu),[1,N_curr]));
+                mu2_samples = unifrnd(minMu, maxMu,[1,N_curr]);
+                mu2_samples(end) = initMu2;
+                dmu2 = exp(mu2_samples);
+                %mu2_samples = log(unifrnd(exp(minMu), exp(maxMu),[1,N_curr]));
                 sig2_samples = unifrnd(minSig, maxSig,[1,N_curr]);
+                sig2_samples(end) = initSig2;
 
                 ppm = ParforProgressbar(N_curr, 'parpool', {'local', 8});
                 logprobs2 = zeros(1,N_curr);
@@ -115,8 +130,8 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
 
                 delete(ppm);
 
-
-                validProbs = ~isinf(logprobs2) & ~isnan(logprobs2) & (logprobs2 < 0);
+                logprobs2 = logprobs2 + log(dmu2);
+                validProbs = ~isinf(logprobs2) & ~isnan(logprobs2);% & (logprobs2 < 0);
                 logprobs2 = logprobs2(validProbs);
                 probNorm_log = max(logprobs2);
 
@@ -129,75 +144,36 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
                 nSamples = size(sig2_samples_rej,2);
                 incFac = minSamples/nSamples;
                 N_curr = ceil(1.05*(incFac) * N_curr);
+                
+                %N_curr = min(N_curr, N_start*10);
             end
         else
             mu2_samples_rej = inputSamples2(:,1);
             sig2_samples_rej = inputSamples2(:,2);
         end
         
-        samples2 = [mu2_samples_rej(:), sig2_samples_rej(:)];
+        %samples2 = [mu2_samples_rej(:), sig2_samples_rej(:)];
         
         %%
-        minVal = min([min(mu1_samples_rej), min(mu2_samples_rej)]);
-        maxVal = max([max(mu1_samples_rej), max(mu2_samples_rej)]);
-        muEdges = linspace(minVal-1e-20, maxVal+1e-20,50+1);
-        
-        if size(mu1_samples_rej,2) > 10000
-            mu1_samples_rej = mu1_samples_rej(1, randperm(size(mu1_samples_rej,2),10000));
-            sig1_samples_rej = sig1_samples_rej(1, randperm(size(mu1_samples_rej,2),10000));
-        end
-        
-        if size(mu2_samples_rej,2) > 10000
-            mu2_samples_rej = mu2_samples_rej(1, randperm(size(mu2_samples_rej,2),10000));
-            sig2_samples_rej = sig2_samples_rej(1, randperm(size(mu2_samples_rej,2),10000));
-        end
-        
-        [M1, M2] = meshgrid(mu1_samples_rej, mu2_samples_rej);
-        countMatM = M2 > M1;
-        pValM = nnz(countMatM)/numel(countMatM);
-        
-        minVal = min([min(sig1_samples_rej), min(sig2_samples_rej)]);
-        maxVal = max([max(sig1_samples_rej), max(sig2_samples_rej)]);
-        sigEdges = linspace(minVal-1e-20, maxVal+1e-20,50+1);
-        
-        [S1, S2] = meshgrid(sig1_samples_rej, sig2_samples_rej);
-        countMatS = S2 > S1;
-        pValS = nnz(countMatS)/numel(countMatS);
-
-        
-        plotHists = false;
-        
-        if plotHists
-            figure;
-            subplot(2,2,1);
-            histogram(mu1_samples_rej,muEdges);
-            title('mean dataset 1');
-
-            subplot(2,2,2);
-            histogram(mu2_samples_rej,muEdges);
-            title('mean dataset 2');
-
-            subplot(2,2,3);
-            histogram(sig1_samples_rej,sigEdges);
-            title('std dataset 1');
-
-            subplot(2,2,4);
-            histogram(sig2_samples_rej,sigEdges);
-            title('std dataset 2');
-            
-            a = 1;
-        end
         
         
     end
 
     useStan = false;
     if useStan
-        nSamples = 100;
+        nSamples = 1000;
+        
+        minMu = muMinIn;
+        maxMu = max([initMu1+muDeltaUB,initMu2+muDeltaUB]);
+        
+        minSig = min([initSig1*sigFacL,initSig2*sigFacL]);
+        maxSig = max([initSig1*sigFacU,initSig2*sigFacU]);
+        minSig = max(minSig, 0.1);
+        maxSig = max(maxSig,minSig+0.1);
         
         initSig1 = initSig1;
         stan_data = struct('Nsamples1',size(dataSet1,1),'data1',dataSet1, 'noiseMu', noiseMean, 'noiseSigma', noiseStd,...
-                           'mu1_lb', initMu1-5, 'mu1_ub', initMu1+5, 'sig1_lb', initSig1*0.5, 'sig1_ub', initSig1*1.5);
+                           'mu1_lb', minMu, 'mu1_ub', maxMu, 'sig1_lb', minSig, 'sig1_ub', maxSig);
 
         initVals.mu1 = initMu1;
         initVals.sigma1 = initSig1;
@@ -211,26 +187,37 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
 
         %control.stepsize = 3;
         %control.stepsize_jitter = 1;
-        %control.adapt_delta = 0.999;
+        control.adapt_delta = 0.999;
         %control.adapt_gamma = 0.03;
 
-        sm = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'init', initVals, 'chains', 1, 'iter', nSamples, 'file_overwrite', true);%, 'control', control);
+        nChains = 8;
+        sm = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'init', initVals, 'chains', nChains, 'iter', nSamples/nChains, 'file_overwrite', true, 'warmup', 5*nSamples/nChains, 'control', control);
         %sm = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'chains', 1, 'iter', nSamples, 'file_overwrite', true);
         %sm.is_compiled = true;
         %sm.compile();
 
-        % subsequent calls will skip recompilation
-        fit = sm.sampling('data',stan_data);
+        if isempty(inputSamples1)
+            % subsequent calls will skip recompilation
+            fit = sm.sampling('data',stan_data);
 
-        %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'init', initVals, 'chains', 4, 'iter', 4000);
-        %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'chains', 4, 'iter', 1000);
-        fit.block()
+            %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'init', initVals, 'chains', 4, 'iter', 4000);
+            %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'chains', 4, 'iter', 1000);
+            fit.block()
 
-        samples1 = fit.extract('permuted',true);
+            samples1 = fit.extract('permuted',true);
+            
+            %subplot(1,2,1);
+            %histogram(samples1.mu1,200);
+            
+            
+            mu1_samples_rej = samples1.mu1;
+            sig1_samples_rej = samples1.sigma1;
+        else
+            mu1_samples_rej = inputSamples1(:,1);
+            sig1_samples_rej = inputSamples1(:,2);
+        end
         
-        
-        subplot(1,2,1);
-        histogram(samples1.mu1,200);
+
         
         %%
         initSig2 = initSig2;
@@ -243,26 +230,89 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
         %initVals.mu2 = initMu2;
         %initVals.sigma2 = initSig2;
 
-
-        sm2 = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'init', initVals, 'chains', 1, 'iter', nSamples, 'file_overwrite', true);%, 'control', control);
+        sm2 = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'init', initVals, 'chains', nChains, 'iter', nSamples/nChains, 'file_overwrite', true, 'warmup', 5*nSamples/nChains, 'control', control);
+        %sm2 = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'init', initVals, 'chains', 1, 'iter', nSamples, 'file_overwrite', true);%, 'control', control);
         %sm = StanModel('model_code',model_code, 'model_name', 'significance_comp','verbose',true, 'chains', 1, 'iter', nSamples, 'file_overwrite', true);
         %sm.is_compiled = true;
         %sm.compile();
 
-        % subsequent calls will skip recompilation
-        fit2 = sm2.sampling('data',stan_data);
-
-        %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'init', initVals, 'chains', 4, 'iter', 4000);
-        %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'chains', 4, 'iter', 1000);
-        fit2.block()
         
-        samples2 = fit2.extract('permuted',true);
 
-        subplot(1,2,1);
-        histogram(samples1.mu1,200);
+        if isempty(inputSamples2)
+            % subsequent calls will skip recompilation
+            fit2 = sm2.sampling('data',stan_data);
 
-        subplot(1,2,2);
-        histogram(samples2.mu1,200);
+            %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'init', initVals, 'chains', 4, 'iter', 4000);
+            %fit = stan('file','lognormal_inf.stan','data',stan_data,'verbose',true, 'chains', 4, 'iter', 1000);
+            fit2.block()
+
+            samples2 = fit2.extract('permuted',true);
+
+            mu2_samples_rej = samples2.mu1;
+            sig2_samples_rej = samples2.sigma1;
+        else
+            mu2_samples_rej = inputSamples2(:,1);
+            sig2_samples_rej = inputSamples2(:,2);
+        end
+
+        %subplot(1,2,1);
+        %histogram(samples1.mu1,200);
+
+        %subplot(1,2,2);
+        %histogram(samples2.mu1,200);
+
+        a = 1;
+    end
+    
+    samples1 = [mu1_samples_rej(:), sig1_samples_rej(:)];
+    samples2 = [mu2_samples_rej(:), sig2_samples_rej(:)];
+    
+    minVal = min([min(mu1_samples_rej), min(mu2_samples_rej)]);
+    maxVal = max([max(mu1_samples_rej), max(mu2_samples_rej)]);
+    muEdges = linspace(minVal-1e-20, maxVal+1e-20,50+1);
+
+    if size(mu1_samples_rej,2) > 10000
+        mu1_samples_rej = mu1_samples_rej(1, randperm(size(mu1_samples_rej,2),10000));
+        sig1_samples_rej = sig1_samples_rej(1, randperm(size(mu1_samples_rej,2),10000));
+    end
+
+    if size(mu2_samples_rej,2) > 10000
+        mu2_samples_rej = mu2_samples_rej(1, randperm(size(mu2_samples_rej,2),10000));
+        sig2_samples_rej = sig2_samples_rej(1, randperm(size(mu2_samples_rej,2),10000));
+    end
+
+    [M1, M2] = meshgrid(mu1_samples_rej, mu2_samples_rej);
+    countMatM = M2 > M1;
+    pValM = nnz(countMatM)/numel(countMatM);
+
+    minVal = min([min(sig1_samples_rej), min(sig2_samples_rej)]);
+    maxVal = max([max(sig1_samples_rej), max(sig2_samples_rej)]);
+    sigEdges = linspace(minVal-1e-20, maxVal+1e-20,50+1);
+
+    [S1, S2] = meshgrid(sig1_samples_rej, sig2_samples_rej);
+    countMatS = S2 > S1;
+    pValS = nnz(countMatS)/numel(countMatS);
+
+
+    plotHists = false;
+
+    if plotHists
+        figure;
+        subplot(2,2,1);
+        histogram(mu1_samples_rej,muEdges);
+        title('mean dataset 1');
+
+        subplot(2,2,2);
+        histogram(mu2_samples_rej,muEdges);
+        title('mean dataset 2');
+
+        subplot(2,2,3);
+        histogram(sig1_samples_rej,sigEdges);
+        title('std dataset 1');
+
+        subplot(2,2,4);
+        histogram(sig2_samples_rej,sigEdges);
+        title('std dataset 2');
 
         a = 1;
     end

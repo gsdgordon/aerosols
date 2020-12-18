@@ -3,10 +3,14 @@ function [pMean, pSig] = computeAndPlotPvals(d1, d2, noiseMean, noiseStd, cat1Id
     p = inputParser;
     addOptional(p,'pMeanIn',[]);
     addOptional(p,'pSigIn',[]);
+    addOptional(p,'pThresh', 0.05);
+    addOptional(p,'muMinIn',-2);
     parse(p,varargin{:});
 
+    muMinIn = p.Results.muMinIn;
     pMeanIn = p.Results.pMeanIn;
     pSigIn = p.Results.pSigIn;
+    pThresh = p.Results.pThresh;
     
     if isempty(pMeanIn) || isempty(pSigIn)
 
@@ -48,7 +52,7 @@ function [pMean, pSig] = computeAndPlotPvals(d1, d2, noiseMean, noiseStd, cat1Id
          bestVal = fmincon(objFun,x0,[],[],[],[], LB , UB,[],options_fmincon);
          paramEst2 = bestVal;
 
-         [pMean, pSig] = computeSignificance(d1, d2, noiseMean, noiseStd, paramEst1(1), paramEst1(2), paramEst2(1), paramEst2(2));
+         [pMean, pSig] = computeSignificance(d1, d2, noiseMean, noiseStd, paramEst1(1), paramEst1(2), paramEst2(1), paramEst2(2), 'muMinIn', muMinIn);
     else
         pMean = pMeanIn;
         pSig = pSigIn;
@@ -57,19 +61,23 @@ function [pMean, pSig] = computeAndPlotPvals(d1, d2, noiseMean, noiseStd, cat1Id
     pMean = min([pMean, 1-pMean]);
     pSig = min([pSig, 1-pSig]);
     
-    if (pMean <= 0.05) || (pSig <= 0.05)
+    if (pMean <= pThresh) || (pSig <= pThresh)
         tempYlim = ylim;
         dY = 0.08*tempYlim(2);
         yVal = max([d1(:); d2(:)]) + dY*(cat2Idx - cat1Idx);
         xVal = [cat1Idx, cat2Idx];
         ctr = mean(xVal);
+        
+        colourList = colormap('colorcube');
+        colourIdx = randi(size(colourList,1));
+        currentColour = colourList(colourIdx,:);
 
         hold on;
-        plot(xVal, [yVal, yVal], '-b', 'LineWidth', 2);
+        plot(xVal, [yVal, yVal], 'LineWidth', 2, 'Color', currentColour);
         oldYlim = ylim;
         newYMax = max([yVal*1.1, oldYlim(2)]);
         ylim([oldYlim(1), newYMax]);
-        text(ctr, yVal+dY, ['p_{\mu}=',num2str(pMean), ', p_{\sigma}', num2str(pSig)], 'HorizontalAlignment', 'Center', 'Color', 'blue');
+        text(ctr, yVal+dY, ['p_{\mu}=',num2str(pMean), ', p_{\sigma}', num2str(pSig)], 'HorizontalAlignment', 'Center', 'Color', currentColour);
         hold off;
     end
 
