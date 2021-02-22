@@ -1,4 +1,4 @@
-function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, dataSet2, noiseMean, noiseStd, initMu1, initSig1, initMu2, initSig2, varargin)
+function [pValM, pValS, meanRatio, ratioLowCI, ratioUpperCI, mean1, mean2, samples1, samples2] = computeSignificance(dataSet1, dataSet2, noiseMean, noiseStd, initMu1, initSig1, initMu2, initSig2, varargin)
 
     %pValM = 0.04;
     %pValS = 0.04;
@@ -57,7 +57,13 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
                 sig1_samples = unifrnd(minSig, maxSig,[1,N_curr]);
                 sig1_samples(end) = initSig1;
 
-                ppm = ParforProgressbar(N_curr, 'parpool', {'local', 8});
+                useparforbar = false;
+                try
+                    %ppm = ParforProgressbar(N_curr, 'parpool', {'local', 8});
+                    useparforbar = true;
+                catch
+                    useparforbar = false;
+                end
                 logprobs1 = zeros(1,N_curr);
                 parfor sampIdx = 1:N_curr
                     %for d1Idx = 1:size(dataSet1,1)
@@ -65,11 +71,15 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
                         logprobs1(sampIdx) = sum(logprobs_temp) - log(norm_const)*size(logprobs_temp,1);
                     %end
                     %disp(['Done ', num2str(sampIdx)]);
-                    ppm.increment();
+                    if (useparforbar)
+                        %ppm.increment();
+                    end
 
                 end
 
-                delete(ppm);
+                if useparforbar
+                    %delete(ppm);
+                end
 
                 logprobs1 = logprobs1 + log(dmu1);
                 validProbs = ~isinf(logprobs1) & ~isnan(logprobs1);% & (logprobs1 < 0);
@@ -116,7 +126,13 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
                 sig2_samples = unifrnd(minSig, maxSig,[1,N_curr]);
                 sig2_samples(end) = initSig2;
 
-                ppm = ParforProgressbar(N_curr, 'parpool', {'local', 8});
+                useparforbar = false;
+                try
+                    %ppm = ParforProgressbar(N_curr, 'parpool', {'local', 8});
+                    useparforbar = true;
+                catch
+                    useparforbar = false;
+                end
                 logprobs2 = zeros(1,N_curr);
                 parfor sampIdx = 1:N_curr
                     %for d1Idx = 1:size(dataSet1,1)
@@ -124,11 +140,14 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
                         logprobs2(sampIdx) = sum(logprobs_temp) - log(norm_const)*size(logprobs_temp,1);
                     %end
                     %disp(['Done ', num2str(sampIdx)]);
-                    ppm.increment();
-
+                    if useparforbar
+                        %ppm.increment();
+                    end
                 end
 
-                delete(ppm);
+                if useparforbar
+                    %delete(ppm);
+                end
 
                 logprobs2 = logprobs2 + log(dmu2);
                 validProbs = ~isinf(logprobs2) & ~isnan(logprobs2);% & (logprobs2 < 0);
@@ -281,9 +300,18 @@ function [pValM, pValS, samples1, samples2] = computeSignificance(dataSet1, data
         sig2_samples_rej = sig2_samples_rej(1, randperm(size(mu2_samples_rej,2),10000));
     end
 
+    mean1 = mean(mu1_samples_rej);
+    mean2 = mean(mu2_samples_rej);
     [M1, M2] = meshgrid(mu1_samples_rej, mu2_samples_rej);
     countMatM = M2 > M1;
     pValM = nnz(countMatM)/numel(countMatM);
+    
+    ratioVals = M2 - M1; %As they are log units
+    ratioVals = ratioVals(:);
+    meanRatio = exp(mean(ratioVals));
+    CIlevel = 95; % % confidence interval
+    ratioLowCI = exp(prctile(ratioVals,(100-CIlevel)/2));
+    ratioUpperCI = exp(prctile(ratioVals,100 - (100-CIlevel)/2));
 
     minVal = min([min(sig1_samples_rej), min(sig2_samples_rej)]);
     maxVal = max([max(sig1_samples_rej), max(sig2_samples_rej)]);

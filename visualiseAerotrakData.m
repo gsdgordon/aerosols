@@ -12,9 +12,10 @@ close all;
 % Load data
 Y = 2020;
 M = 10;
-D = 29;
+D = 28;
 
 P = 1;
+P_N60 = 1;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
@@ -31,7 +32,11 @@ avSampleTime = mode(sampleTime); % assumes sample time is not changed during ope
 
 loadAnnotations = true;
 if loadAnnotations
-    annotationFile = fullfile(folder,[datestring, '_patient', num2str(P), '.csv']);
+    if isnumeric(P)
+        annotationFile = fullfile(folder,[datestring, '_patient', num2str(P), '.csv']);
+    else
+        annotationFile = fullfile(folder,[datestring, '_patient', P, '.csv']);
+    end
     T_annotation = readtable(annotationFile, 'ReadVariableNames', false, 'HeaderLines', 0); % FIX ignores first row
 
     foundEventStart = false;
@@ -97,10 +102,36 @@ T = T(1:end-1,:); % remove last count as it is likely partial
 opTime2 = T.DateAndTime - aeroOffsetTime;
 airVol = T.Volume_L_;
 
-loadN60data_var = false;
+loadN60data_var = true;
 if loadN60data_var
-    folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\20201028\20202810_04_N60';
-    prefix = '--6-Run';
+    fileListN60_par = dir(folder);
+    filterFun = @(x) regexpi(x, [datestring, '_', sprintf('%02d',P_N60), '_N60.*']);
+    temp = cellfun(filterFun, {fileListN60_par.name}, 'UniformOutput', false); 
+    fileListN60_par = fileListN60_par(~cellfun(@isempty,temp));
+        
+    folderN60 = [folder, fileListN60_par(1).name];
+    
+    fileListN60 = dir(folderN60);
+    
+    filterFun = @(x) regexpi(x, '--([0-9])+.*', 'match', 'tokens');
+    [temp, temp2] = cellfun(filterFun, {fileListN60.name}, 'UniformOutput', false); 
+    temp2 = temp2';
+    
+    for k = 1:size(temp2,1)
+        currentNum = temp2(k);
+        currentNum = currentNum{1};
+            
+        if ~isempty(currentNum)
+            currentNum = currentNum{1};
+            currentNum = currentNum{1};
+
+            prefixList(k) = str2num(currentNum);
+        end
+    end
+    
+    prefixNum = mode(prefixList);
+
+    prefix = ['--', sprintf('%d',prefixNum), '-Run'];
 
     AT_diff = eventTimes_aerotrak{1,1} - eventTimes_obscam{1,1};
 
@@ -111,9 +142,37 @@ if loadN60data_var
     N60_diff_AT = N60_diff - AT_diff;
 
     % INput times
-    [N60timesall, N60counts, N60diameters, N60shapes] = loadN60data(folder, prefix, opTime2(1)+N60_diff_AT, opTime2(end)+N60_diff_AT);
+    if (~isempty(opTime2))
+        startN60 = opTime2(1)+N60_diff_AT;
+        endN60  = opTime2(end)+N60_diff_AT;
+    else
+        startN60 = startTime - aeroOffsetTime + N60_diff_AT;
+        endN60  = endTime - aeroOffsetTime + N60_diff_AT;
+    end
+    
+    useEvent = true;
+    if useEvent
+        eventToUse = 'Cough';
+        idx = find(strcmpi(table2cell(eventNames),eventToUse));
+        idx = idx(1);
+        startN60 = eventTimes(idx) + N60_diff_AT;
+        endN60 = startN60 + seconds(60);
+    end
+        
+    [N60timesall, N60counts, N60diameters, N60shapes] = loadN60data(folderN60, prefix, startN60, endN60);
     N60timesall = N60timesall - N60_diff_AT;
     
+    N60_area = 12606*7181; %0.58 magnification, in micronrs
+    N60_depth = 50000;
+    N60_vol = N60_area/(1e6^2) * N60_depth/(1e6);
+    
+    if useEvent
+        save([folder, '/N60_agg_', num2str(P_N60), '_', eventToUse, '.mat'], 'N60diameters', 'N60shapes');
+    else
+        save([folder, '/N60_agg_', num2str(P_N60), '.mat'], 'N60diameters', 'N60shapes');
+    end
+    
+    %"Max. Probe volume (cu mm)"	4526.4189
 end
 
 % Now get the particle 'diameters' representing the edges of the counting
@@ -318,6 +377,32 @@ for k=1:nSizes+2
 end
 
 if loadN60data_var
+    figure;
+    %N60timesall(567) = N60timesall(567)+seconds(0.01);
+    N60_countsResamp = interp1(N60timesall, N60counts, opTime2);
+    largeParts = data_density(6,:)/(1-correctionVal(6));
+    largeParts = largeParts.';
+    
+    [corrCurve, lags] = xcorr(largeParts, N60_countsResamp);
+    
+    lags = lags.' .* avSampleTime;
+    winWidth = 180;
+    valCorr = lags >= -1*winWidth & lags <= winWidth;
+    
+    corrCurve = corrCurve(valCorr);
+    lags = lags(valCorr);
+    
+    temp = corrcoef(largeParts, N60_countsResamp);
+    normVal = temp(1,2);
+    
+    corrCurve = corrCurve/corrCurve(lags == 0) * normVal;
+    
+    plot(lags, corrCurve);
+    xlabel('offset in seconds');
+    ylabel('correlation');
+    
+    save([folder, '/N60_corr_', num2str(P_N60), '.mat'], 'lags', 'corrCurve');
+    
     figure;
     subplot(7,1,1);
     plot(N60timesall, N60counts);

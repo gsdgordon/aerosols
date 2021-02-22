@@ -4,7 +4,7 @@ function [times2, countssum, diameters2, shapes2] = loadN60data(folder, filePref
     times = [];
     shapes =[];
     diameters = [];
-    for k=1:20
+    for k=1:50
        currentFile_vsp = [filePrefix, num2str(k), '.vsp'];
        filePath_vsp = fullfile(folder, currentFile_vsp);
 
@@ -16,7 +16,7 @@ function [times2, countssum, diameters2, shapes2] = loadN60data(folder, filePref
        end
 
        if (k==1)
-           settings_vsp = detectImportOptions('C:\Users\george\OneDrive - The University of Nottingham\SAVE\20201028\20202810_01_N60\--3-Run1.vsp', 'FileType', 'delimitedtext'); %FIX can't just rely on this
+           settings_vsp = detectImportOptions('C:\Users\george\OneDrive - The University of Nottingham\SAVE\20201028\20201028_01_N60\--3-Run1.vsp', 'FileType', 'delimitedtext'); %FIX can't just rely on this
            settings_txt = detectImportOptions(filePath_txt, 'FileType', 'text');
            settings_txt.DataLines = [1,17];
            settings_txt.VariableTypes{2} = 'char';
@@ -90,7 +90,7 @@ function [times2, countssum, diameters2, shapes2] = loadN60data(folder, filePref
     shapes2 = shapes2(I);
     counts = counts(I);
     countssum = zeros(size(counts));
-    countAvTime = seconds(30);
+    countAvTime = seconds(7);
 
     startT = times2(1);
     startIdx = 1;
