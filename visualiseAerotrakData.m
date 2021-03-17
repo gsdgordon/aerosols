@@ -10,11 +10,11 @@ clear variables;
 close all;
 
 % Load data
-Y = 2020;
-M = 10;
-D = 28;
+Y = 2021;
+M = 03;
+D = 05;
 
-P = 1;
+P = 5;
 P_N60 = 1;
 
 datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
@@ -102,7 +102,7 @@ T = T(1:end-1,:); % remove last count as it is likely partial
 opTime2 = T.DateAndTime - aeroOffsetTime;
 airVol = T.Volume_L_;
 
-loadN60data_var = true;
+loadN60data_var = false;
 if loadN60data_var
     fileListN60_par = dir(folder);
     filterFun = @(x) regexpi(x, [datestring, '_', sprintf('%02d',P_N60), '_N60.*']);

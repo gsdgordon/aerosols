@@ -4,23 +4,83 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
 
     folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
 
-    T_raw = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
-    %T = readtable('/home/george/Desktop/20201030_aerotrak.xlsx');
+    if exist(fullfile(folder, [datestring,'_aerotrak.xlsx']))
+        T_raw = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
+        %T = readtable('/home/george/Desktop/20201030_aerotrak.xlsx');
+
+        T_procindex_raw = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\ProcedureIndex.xlsx', 'ReadVariableNames', true, 'Format', 'auto');
+
+        annotationFile = fullfile(folder,[datestring, '_patient', num2str(P), '.csv']);
+        T_annotation = readtable(annotationFile, 'ReadVariableNames', false, 'HeaderLines', 0, 'Format', 'auto'); % FIX ignores first row
+
+        %% Exclude if necessary
+        exclude = false;
+        temp = T_annotation(strcmpi(T_annotation.Var1, 'Study number'),2);
+        temp = table2cell(temp);
+        temp = temp{1};
+
+        if isnan(temp)
+            exclude = true;
+        else
+            tempStudyNo = str2num(temp);
+            
+            tableIdx = find(T_procindex_raw.StudyNo_ == tempStudyNo);
+
+            exclude_temp = T_procindex_raw.Exclude(tableIdx);
+            exclude_temp = exclude_temp{1};
+
+            temp = regexp(exclude_temp, 'y.*');
+
+            if ~isempty(temp)
+                exclude = true;
+            end
+        end
+    else
+        exclude = true;
+    end
+    
+    if exclude
+        % Exclude this data point
+        data = NaN;
+        opTime2 = NaN;
+        eventTimes = NaN;
+        eventNames = NaN;
+        avSampleTime = NaN;
+        bg_data = NaN;
+        fg_data = NaN;
+        data_v = NaN;
+        bg_data_v = NaN;
+        fg_data_v = NaN;
+        diameters = NaN;
+        diameters_av = NaN;
+        
+        T_othervars = NaN;
+        
+        data_next = NaN;
+        opTime2_next = NaN;
+        bg_data_next = NaN;
+        fg_data_next = NaN;
+        data_v_next = NaN;
+        bg_data_v_next = NaN;
+        fg_data_v_next = NaN;
+        return;
+    end
+    
+    %%
 
     opTime = T_raw.DateAndTime;
     location = T_raw.Location;
     sampleTime = T_raw.SampleTime;
     avSampleTime = mode(sampleTime); % assumes sample time is not changed during operation, but excludes partial samples
 
-    annotationFile = fullfile(folder,[datestring, '_patient', num2str(P), '.csv']);
-    T_annotation = readtable(annotationFile, 'ReadVariableNames', false, 'HeaderLines', 0); % FIX ignores first row
+
     
     nextAnnotationFile = fullfile(folder,[datestring, '_patient', num2str(P+1), '.csv']);
     
     nextPatientExists = false;
     if exist(nextAnnotationFile)
         nextPatientExists = true;
-        T_nextannotation = readtable(nextAnnotationFile, 'ReadVariableNames', false, 'HeaderLines', 0); % FIX ignores first row
+        T_nextannotation = readtable(nextAnnotationFile, 'ReadVariableNames', false, 'HeaderLines', 0, 'Format', 'auto'); % FIX ignores first row
     end
 
     foundEventStart = false;
@@ -73,11 +133,35 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     eventNames = T_annotation(validEvents,1);
     %eventTimes_endo = T_annotation(validEvents,2);
     %eventTimes_obscam = T_annotation(validEvents,3);
-    eventTimes_aerotrak = T_annotation(validEvents,4);
+    temp_times = table2array(T_annotation(validEvents,4));
+    eventTimes_aerotrak = datetime(temp_times);
     
     if nextPatientExists
-        eventNames_next = T_nextannotation(eventStart_idx:end,1);
-        eventTimes_aerotrak_next = T_nextannotation(eventStart_idx:end,4);
+        foundEventStart_next = false;
+        validEvents_next = false(size(T_nextannotation,1),1);
+        for k=1:size(T_nextannotation,1)
+            currentText = table2array(T_nextannotation(k,1));
+            currentText = currentText{1};
+            if strcmpi(currentText, 'incident')
+                eventStart_idx_next = k+1;
+                foundEventStart_next = true;
+                continue
+            end
+
+            currentTime = table2array(T_nextannotation(k,2));
+            if foundEventStart_next
+                if ~isempty(currentText)
+                    if ~(currentText(end) == '*' && currentText(end-1) == "*")
+                        validEvents_next(k) = true;
+                    end
+                end
+            end
+        end
+        
+        eventNames_next = T_nextannotation(eventStart_idx_next:end,1);
+        temp_times = table2array(T_nextannotation(eventStart_idx_next:end,4));
+        eventTimes_aerotrak_next = datetime(temp_times);
+    
         nLoops = 2;
     else
         nLoops = 1;
@@ -134,7 +218,7 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
          
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Smoker'),2);
     temp = table2cell(temp);
-    [isSmoker, ~] = processVars(temp, {'yes','no', 'unknown'}, {'.*yes.*', '.*[1-9]?[0-9]*.*'}, {'.*no.*', '.*[0]+.*'}, {'.*none.*','.*N/A.*',''});
+    [isSmoker, ~] = processVars(temp, {'yes','no', 'unknown'}, {'.*occasionally.*', '.*yes.*', '.*[1-9]?[0-9]*.*'}, {'.*no.*', '.*[0]+.*'}, {'.*none.*','.*N/A.*',''});
     T_othervars.Smoker = isSmoker;
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'previous hysterectomy'),2);
@@ -150,6 +234,15 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Route of UGI'),2);
     temp = table2cell(temp);
     [ugiRoute, ~] = processVars(temp, {'oral', 'nasal', 'N/A'}, {'.*oral.*', '.*mouth.*'}, {'.*nasal.*', '.*nose.*'}, {'.*none.*','.*N/A.*',''});
+    ugiRoute = addcats(ugiRoute,'nasal abandonded');
+    % Check if chase from nasal to oral
+    ugiRoute_temp = T_procindex_raw.UGIRoute(tableIdx);
+    temp = regexpi(ugiRoute_temp, '.*half.*');
+    if ~isempty(temp{1})
+        if ugiRoute == 'nasal'
+            ugiRoute = 'nasal abandoned';
+        end
+    end
     T_othervars.UGIroute = ugiRoute;
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Degree of looping'),2);
@@ -179,7 +272,7 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     T_othervars.Suctioning = suctioning;
     
     % Last 2 vars pull from proc. index
-    T_procindex_raw = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\ProcedureIndex.xlsx', 'ReadVariableNames', true, 'Format', 'auto');
+    %T_procindex_raw = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\ProcedureIndex.xlsx', 'ReadVariableNames', true, 'Format', 'auto');
     
     tableIdx = find(T_procindex_raw.StudyNo_ == T_othervars.StudyNumber);
     
@@ -215,7 +308,7 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     
     %%
     for k=1:size(eventNames,1)
-        currentTime_dur =(eventTimes_aerotrak{k,1}); % FIX need to sort by date
+        currentTime_dur =(eventTimes_aerotrak(k,1)) - datetime(year(eventTimes_aerotrak(k,1)), month(eventTimes_aerotrak(k,1)), day(eventTimes_aerotrak(k,1)),0,0,0); % FIX need to sort by date
         eventTimes(k,1) = datetime(Y,M,D,0,0,0) + currentTime_dur - seconds(avSampleTime); % Shift events, not aerotrak
     end
     
@@ -224,7 +317,7 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     
     if nextPatientExists
         for k=1:size(eventNames_next,1)
-            currentTime_dur_next =(eventTimes_aerotrak_next{k,1}); % FIX need to sort by date
+            currentTime_dur_next =(eventTimes_aerotrak_next(k,1))  - datetime(year(eventTimes_aerotrak_next(k,1)), month(eventTimes_aerotrak_next(k,1)), day(eventTimes_aerotrak_next(k,1)),0,0,0);; % FIX need to sort by date
             eventTimes_next(k,1) = datetime(Y,M,D,0,0,0) + currentTime_dur_next - seconds(avSampleTime); % Shift events, not aerotrak
         end
     

@@ -25,9 +25,40 @@ limitSize = false;
 lt = true;
 sizeLim = 5;
 
-includeThroatSpray = true;
+includeThroatSpray = false;
 supressPosChanges = true;
-fgOnly = true;
+fgOnly = false;
+
+resultsFolder = sprintf('%s_results', datestr(now,'mm-dd-yyyy'));
+%folder = '01-07-2021_results';
+
+dataDir = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\'];
+
+resultsFolder = [dataDir, resultsFolder];
+if ~exist(resultsFolder)
+    mkdir(resultsFolder);
+end
+
+label = '';
+if limitSize
+    if lt
+        label = [label, '_lt', num2str(sizeLim)];
+    else
+        label = [label, '_gt', num2str(sizeLim)];
+    end
+end
+
+if includeThroatSpray
+    label = [label, '_ts'];
+end
+
+if fgOnly
+    label = [label, '_fg'];
+end
+
+if supressPosChanges
+    label = [label, '_supPos'];
+end
 
 for fileIdx = 1:nFiles
     currentFolder = fileList_raw(fileIdx).name;
@@ -52,6 +83,14 @@ for fileIdx = 1:nFiles
         test = sscanf(currentFile, '%4d%2d%2d_patient%d.csv');
         
         P = test(4); % TODO ensure dates match
+        
+        if ~(M==3 && D==5 && P==5)
+            %continue;
+        end
+        
+        if (M==3 && D==11)
+            continue;
+        end
         
         [data, datatimes, eventTimes, eventNames, avSampleTime, otherVars, bg_data, fg_data, data_v, bg_data_v, fg_data_v, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P);
         
@@ -323,7 +362,7 @@ for fileIdx = 1:nFiles
         
         tComb = join(otherVars,tempResults);
         
-        if (tComb.RoomType == 'theatre') || (tComb.PatientMask == 'yes')
+        if (tComb.RoomType == 'theatre') % || (tComb.PatientMask == 'yes')
             %Exclude masks and ERCP procedures
             continue;
         end
@@ -495,7 +534,7 @@ end
 upperGITable = procedureTable(procedureTable.Procedure == 'upper GI', :);
 lowerGITable = procedureTable(procedureTable.Procedure == 'lower GI', :);
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,2,1);
 pie(categorical(lowerGITable.nearestEvent_sum));
 title('Lower GI max events');
@@ -504,7 +543,10 @@ subplot(1,2,2);
 pie(categorical(upperGITable.nearestEvent_sum));
 title('Upper GI max events');
 
-figure;
+saveas(gcf,fullfile(resultsFolder,['fullproc_pie_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_pie_', label, '.png']));
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,2,1);
 pie(categorical(lowerGITable.nearestEvent_sum_v));
 title('Lower GI max events (volume)');
@@ -512,6 +554,9 @@ title('Lower GI max events (volume)');
 subplot(1,2,2);
 pie(categorical(upperGITable.nearestEvent_sum_v));
 title('Upper GI max events (volume)');
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_pie_v_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_pie_v_', label, '.png']));
 
 %%%
 totPart = procedureTable.procedureTot_sum;
@@ -559,26 +604,30 @@ maxPart_diff_UGI = maxPart_diff(maxPart_diffCat == 'upper GI diff');
 disp(['UGI: ', num2str(nnz(maxPart_diff_UGI > 0)), '/', num2str(numel(maxPart_diff_UGI)), ' = ', num2str(nnz(maxPart_diff_UGI > 0)/numel(maxPart_diff_UGI)*100), '%']);
 disp(['LGI: ', num2str(nnz(maxPart_diff_LGI > 0)), '/', num2str(numel(maxPart_diff_LGI)), ' = ', num2str(nnz(maxPart_diff_LGI > 0)/numel(maxPart_diff_LGI)*100), '%']);
 
-[~, p_lp, ci_lp] = ttest2(log(maxPartPre), log(maxPart(maxPart_cat == 'lower GI')));
-[~, p_up, ci_up] = ttest2(log(maxPartPre), log(maxPart(maxPart_cat == 'upper GI')));
-[~, p_lu, ci_lu] = ttest2(log(maxPart(maxPart_cat == 'lower GI')), log(maxPart(maxPart_cat == 'upper GI')));
-
-ratio_lp = exp(ci_lp);
-ratio_up = exp(ci_up);
-ratio_lu = exp(ci_lu);
-
-mean_lp = sqrt(ratio_lp(1) * ratio_lp(2));
-mean_up = sqrt(ratio_up(1) * ratio_up(2));
-mean_lu = sqrt(ratio_lu(1) * ratio_lu(2));
+% [~, p_lp, ci_lp] = ttest2(log(maxPartPre), log(maxPart(maxPart_cat == 'lower GI')));
+% [~, p_up, ci_up] = ttest2(log(maxPartPre), log(maxPart(maxPart_cat == 'upper GI')));
+% [~, p_lu, ci_lu] = ttest2(log(maxPart(maxPart_cat == 'lower GI')), log(maxPart(maxPart_cat == 'upper GI')));
+% 
+% ratio_lp = exp(ci_lp);
+% ratio_up = exp(ci_up);
+% ratio_lu = exp(ci_lu);
+% 
+% mean_lp = sqrt(ratio_lp(1) * ratio_lp(2));
+% mean_up = sqrt(ratio_up(1) * ratio_up(2));
+% mean_lu = sqrt(ratio_lu(1) * ratio_lu(2));
 
 meanPart = procedureTable.procedureMean_sum;
 meanPart_cat = procedureTable.Procedure;
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,3,1);
 %boxplot(totPart, totPart_cat);
 violinplot([totPart./totPart_pre], [totPart_cat]);
 title('Total no. particles');
+
+text(0.5, max(totPart./totPart_pre)*0.8,['Total LGI-pre ratio: ', num2str(mean_lp), ' (', num2str(ratio_lp(1)), '-', num2str(ratio_lp(2)), ') p=', num2str(p_lp), ', mean = ', num2str(meanLGI)]);
+text(0.5, max(totPart./totPart_pre)*0.6,['Total UGI-pre ratio: ', num2str(mean_up), ' (', num2str(ratio_up(1)), '-', num2str(ratio_up(2)), ') p=', num2str(p_up), ', mean = ', num2str(meanUGI)]);
+text(0.5, max(totPart./totPart_pre)*0.4,['Total LGI-UGI ratio: ', num2str(mean_lu), ' (', num2str(ratio_lu(1)), '-', num2str(ratio_lu(2)), ') p=', num2str(p_lu)]);
 
 subplot(1,3,2);
 %boxplot([maxPartPre; maxPart; maxPart_diff], [maxPartPre_cat; maxPart_cat; maxPart_diffCat]);
@@ -590,12 +639,16 @@ subplot(1,3,3);
 violinplot(meanPart, meanPart_cat);
 title('Mean no. particles/m^3s^{-1}');
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_total_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_total_', label, '.png']));
+
+
 %% Durations
 durations = procedureTable.procedureDuration;
 durations_LGI = durations(procedureTable.Procedure == 'lower GI');
 durations_UGI = durations(procedureTable.Procedure == 'upper GI');
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 histogram(durations_LGI,20);
 hold on;
 histogram(durations_UGI,20);
@@ -611,11 +664,19 @@ med_duration_UGI = median(durations_UGI);
 disp(['UGI proc. duration: Mean: ', num2str(mean_duration_UGI), ', Med: ', num2str(med_duration_UGI), ' mins']);
 disp(['LGI proc. duration: Mean: ', num2str(mean_duration_LGI), ', Med: ', num2str(med_duration_LGI), ' mins']);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_duration_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_duration_', label, '.png']));
 
-figure;
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,2,1);
 scatter(lowerGITable.procedureDuration,lowerGITable.procedureTot_sum);
-[fitresult, gof, ~] = fit(lowerGITable.procedureDuration,lowerGITable.procedureTot_sum,'poly1');
+temp_x = lowerGITable.procedureDuration;
+temp_y = lowerGITable.procedureTot_sum;
+valid = temp_y < 4e9;
+temp_x = temp_x(valid);
+temp_y = temp_y(valid);
+[fitresult, gof, ~] = fit(temp_x,temp_y,'poly1');
 newx = linspace(min(lowerGITable.procedureDuration), max(lowerGITable.procedureDuration),100);
 yfit = feval(fitresult,newx);
 
@@ -663,11 +724,14 @@ ylabel('tot no. particles');
 title('upper GI tot. particles v length');
 
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_durTrend_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_durTrend_', label, '.png']));
+
 
 %% Plot vars
 
 %% Anal tone
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 analTone = procedureTable.AnalTone;
 maxPart = procedureTable.procedureMax_sum;
 
@@ -689,8 +753,12 @@ text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' 
 text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
 text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_analtone_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_analtone_', label, '.png']));
+
+
 %% Sedation, proc. duration
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 sedation = procedureTable.Sedation;
 sedDuration = procedureTable.procedureDuration;
 
@@ -705,7 +773,11 @@ ci_sed = exp(ci_sed);
 
 text(1.0, max(sedDuration)*0.8,['midazolam-none: ', num2str(sqrt(ci_sed(1)*ci_sed(2))), ' (', num2str(ci_sed(1)), '-', num2str(ci_sed(2)), ') p = ', num2str(p_sed)]);
 
-figure;
+saveas(gcf,fullfile(resultsFolder,['fullproc_seddurugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_seddurugi_', label, '.png']));
+
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 sedation = procedureTable.Sedation;
 sedDuration = procedureTable.procedureDuration;
 
@@ -720,8 +792,12 @@ ci_sed = exp(ci_sed);
 
 text(1.0, max(sedDuration)*0.8,['midazolam-entonox: ', num2str(sqrt(ci_sed(1)*ci_sed(2))), ' (', num2str(ci_sed(1)), '-', num2str(ci_sed(2)), ') p = ', num2str(p_sed)]);
 
-%%
-figure;
+saveas(gcf,fullfile(resultsFolder,['fullproc_seddurlgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_seddurlgi_', label, '.png']));
+
+
+%% Sex
+figure('units','normalized','outerposition',[0 0 1 1]);
 sex = procedureTable.Sex;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -736,7 +812,10 @@ ci_mf = exp(ci_mf);
 
 text(1.0, max(maxPart)*0.8,['Male-female: ', num2str(sqrt(ci_mf(1)*ci_mf(2))), ' (', num2str(ci_mf(1)), '-', num2str(ci_mf(2)), ') p = ', num2str(p_mf)]);
 
-figure;
+saveas(gcf,fullfile(resultsFolder,['fullproc_sexugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_sexugi_', label, '.png']));
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 sex = procedureTable.Sex;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -751,8 +830,11 @@ ci_mf = 1./exp(ci_mf);
 
 text(1.0, max(maxPart)*0.8,['Male-female: ', num2str(sqrt(ci_mf(1)*ci_mf(2))), ' (', num2str(ci_mf(1)), '-', num2str(ci_mf(2)), ') p = ', num2str(p_mf)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_sexlgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_sexlgi_', label, '.png']));
+
 %% Sedation
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 sedation = procedureTable.Sedation;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -767,7 +849,10 @@ ci_mn = exp(ci_mn);
 
 text(1.0, max(maxPart)*0.8,['Midaz-none: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
 
-figure;
+saveas(gcf,fullfile(resultsFolder,['fullproc_sedugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_sedugi_', label, '.png']));
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 sedation = procedureTable.Sedation;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -783,8 +868,30 @@ ci_mn = exp(ci_mn);
 
 text(1.0, max(maxPart)*0.8,['Midaz-entonox: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_sedlgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_sedlgi_', label, '.png']));
+
+%% Mask
+figure('units','normalized','outerposition',[0 0 1 1]);
+masked = procedureTable.PatientMask;
+maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
+
+masked = masked(procedureTable.Procedure == 'upper GI' & procedureTable.UGIroute == 'oral');
+maxPart = maxPart(procedureTable.Procedure == 'upper GI' & procedureTable.UGIroute == 'oral');
+violinplot(maxPart, masked);
+title('Max particles vs. mask');
+ylabel('max no particles /m^3/s');
+
+[~, p_mn, ci_mn] = ttest2(log(maxPart(masked == 'yes')), log(maxPart(masked == 'no')));
+ci_mn = exp(ci_mn);
+
+text(1.0, max(maxPart)*0.8,['Mask-nonmasked: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_maskedugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_maskedugi_', label, '.png']));
+
 %% Smoker
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 smoker = procedureTable.Smoker;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -799,8 +906,11 @@ ci_mn = exp(ci_mn);
 
 text(1.0, max(maxPart)*0.8,['Smoker-nonsmoker: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_smokerugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_smokerugi_', label, '.png']));
 
-figure;
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 smoker = procedureTable.Smoker;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -815,8 +925,11 @@ ylabel('max no particles /m^3/s');
 ci_mn = exp(ci_mn);
 text(1.0, max(maxPart)*0.8,['Smoker-nonsmoker: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_smokerlgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_smokerlgi_', label, '.png']));
+
 %% Discomfort
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 discomfort = procedureTable.Discomfort;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -839,14 +952,17 @@ text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' 
 text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
 text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
 
-figure;
+saveas(gcf,fullfile(resultsFolder,['fullproc_discomfortugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_discomfortugi_', label, '.png']));
+
+figure('units','normalized','outerposition',[0 0 1 1]);
 discomfort = procedureTable.Discomfort;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
 discomfort = discomfort(procedureTable.Procedure == 'lower GI');
 maxPart = maxPart(procedureTable.Procedure == 'lower GI');
 violinplot(maxPart, discomfort);
-title('Max particles vs. discom upper');
+title('Max particles vs. discom lower');
 ylabel('max no particles /m^3/s');
 
 [~, p_lm, ci_lm] = ttest2(log(maxPart(discomfort == 'low')), log(maxPart(discomfort == 'medium')));
@@ -862,9 +978,10 @@ text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' 
 text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
 text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_discomfortlgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_discomfortlgi_', label, '.png']));
 %% Co2
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 CO2 = procedureTable.UseOfCO2orWater;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -879,9 +996,10 @@ ylabel('max no particles /m^3/s');
 ci_lm = exp(ci_lm);
 text(1.0, max(maxPart)*0.8,['CO2-water: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_co2_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_co2_', label, '.png']));
 %% Hysterectomy
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 hyst = procedureTable.PreviousHysterectomy;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -896,9 +1014,10 @@ ylabel('max no particles /m^3/s');
 ci_lm = 1./exp(ci_lm);
 text(1.0, max(maxPart)*0.8,['Yes-No: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_hyst_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_hyst_', label, '.png']));
 %% UGI route
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 ugiroute = procedureTable.UGIroute;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -913,9 +1032,10 @@ ylabel('max no particles /m^3/s');
 ci_lm = exp(ci_lm);
 text(1.0, max(maxPart)*0.8,['Nasal-Oral: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_ugiroute_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_ugiroute_', label, '.png']));
 %% Hernia
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 hiatus = procedureTable.HiatusHernia;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -930,9 +1050,10 @@ ylabel('max no particles /m^3/s');
 ci_lm = exp(ci_lm);
 text(1.0, max(maxPart)*0.8,['Yes-No: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_hernia_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_hernia_', label, '.png']));
 %% Suctioning
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 suctioning = procedureTable.Suctioning;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
@@ -948,9 +1069,10 @@ ci_lm = exp(ci_lm);
 text(1.0, max(maxPart)*0.8,['Yes-no: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
 
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_suctioning_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_suctioning_', label, '.png']));
 %% Age
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 age = procedureTable.Age;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 age = age(procedureTable.Procedure == 'upper GI');
@@ -980,8 +1102,10 @@ confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
 text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_ageugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_ageugi_', label, '.png']));
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 age = procedureTable.Age;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 age = age(procedureTable.Procedure == 'lower GI');
@@ -1006,16 +1130,16 @@ hold off;
 xlabel('age');
 ylabel('max no. particles');
 title('age lower GI');
-a = 1;
 
 confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
 text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_agelgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_agelgi_', label, '.png']));
 
 %% BMI
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 BMI = procedureTable.BMI;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 BMI = BMI(procedureTable.Procedure == 'upper GI');
@@ -1049,8 +1173,10 @@ confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
 text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_bmiugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_bmiugi_', label, '.png']));
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 BMI = procedureTable.BMI;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 BMI = BMI(procedureTable.Procedure == 'lower GI');
@@ -1085,7 +1211,8 @@ confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
 text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
 
-
+saveas(gcf,fullfile(resultsFolder,['fullproc_bmilgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_bmilgi_', label, '.png']));
 
 %% Interprocedure
 usesAirSentry = interProcedureTable.AirSentryUsed;
@@ -1108,7 +1235,7 @@ part10min_sent_cat = interProcedureTable(usesAirSentry,:).Procedure;
 part20min_sent = interProcedureTable(usesAirSentry,:).count_20min_sum;
 part20min_sent_cat = interProcedureTable(usesAirSentry,:).Procedure;
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(2,2,1);
 temp_data = [part5min; part10min; part20min];
 temp_cats = [part5min_cat; part10min_cat; part20min_cat;];
@@ -1169,6 +1296,9 @@ ylim([0, max(ylimFirst)]);
 xlabel('Mins after end of procedure');
 ylabel('No. particles');
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_interproctot_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_interproctot_', label, '.png']));
+
 % Now compute slopes
 slopes = interProcedureTable.slopes;
 lengths = interProcedureTable.lengths;
@@ -1192,7 +1322,7 @@ for k=1:size(slopes_sent,1)
     slopes_sent_f = [slopes_sent_f; ones(lengths_sent(k),1)*slopes_sent(k)];
 end
 
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,3,1)
 histogram(slopes_nosent_f,50);
 nosent_mean = sum(lengths_nosent/sum(lengths_nosent) .* slopes_nosent);
@@ -1243,6 +1373,9 @@ hold on;
 histogram(t_95_sent, 50);
 hold off;
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_', label, '.png']));
+
 %%%
 tempTable = removevars(upperGITable, {'StudyNumber', 'procedureMax_all', 'procedureMax_sum', 'procedureMax_sum_v', 'procedureTot_all', 'procedureTot_sum', 'procedureTot_sum_v', 'procedureMean_all', 'procedureMean_sum', 'procedureMean_sum_v','nearestEvent_all', 'nearestEvent_sum', 'preProcedureMax_all','preProcedureMax_sum','preProcedureMax_sum_v', 'nearestEvent_sum_v', 'tDiff_all', 'tDiff_sum', 'tDiff_sum_v', 'diameters'});
 %tempForest = TreeBagger(1000, tempTable, upperGITable.procedureMax_sum, 'CategoricalPredictors',[1,4:size(tempTable,2)], 'Method', 'Regression', 'OOBPrediction','On', 'OOBPredictorImportance','on','Surrogate','on','PredictorSelection', 'interaction-curvature', 'NumPredictorsToSample', 'all');
@@ -1250,7 +1383,7 @@ tempForest = TreeBagger(1000, tempTable, upperGITable.procedureTot_sum./upperGIT
 
 imp = tempForest.OOBPermutedPredictorDeltaError;
 %imp(imp < 0) = 0;
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,2,1);
 bar(imp);
 title('Upper GI Variable importance');
@@ -1268,6 +1401,9 @@ plot(oobErrorBaggedEnsemble)
 xlabel('Number of grown trees');
 ylabel('Out-of-bag MSE');
 
+saveas(gcf,fullfile(resultsFolder,['fullproc_forestugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_forestugi_', label, '.png']));
+
 %% Lower GI
 tempTable = removevars(lowerGITable, {'StudyNumber', 'procedureMax_all', 'procedureMax_sum', 'procedureMax_sum_v', 'procedureTot_all', 'procedureTot_sum', 'procedureTot_sum_v', 'procedureMean_all', 'procedureMean_sum', 'procedureMean_sum_v','nearestEvent_all', 'nearestEvent_sum', 'preProcedureMax_all','preProcedureMax_sum','preProcedureMax_sum_v', 'nearestEvent_sum_v', 'tDiff_all', 'tDiff_sum', 'tDiff_sum_v', 'diameters'});
 %tempForest = TreeBagger(1000, tempTable, lowerGITable.procedureMax_sum, 'CategoricalPredictors',[1,4:size(tempTable,2)], 'Method', 'Regression', 'OOBPrediction','On', 'OOBPredictorImportance','on','Surrogate','on','PredictorSelection', 'interaction-curvature', 'NumPredictorsToSample', 'all');
@@ -1275,7 +1411,7 @@ tempForest = TreeBagger(1000, tempTable, lowerGITable.procedureTot_sum./lowerGIT
 
 imp = tempForest.OOBPermutedPredictorDeltaError;
 %imp(imp < 0) = 0;
-figure;
+figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,2,1);
 bar(imp);
 title('Lower GI Variable importance');
@@ -1292,5 +1428,8 @@ oobErrorBaggedEnsemble = oobError(tempForest);
 plot(oobErrorBaggedEnsemble)
 xlabel('Number of grown trees');
 ylabel('Out-of-bag MSE');
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_forestlgi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_forestlgi_', label, '.png']));
 
 a = 1;
