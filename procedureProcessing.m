@@ -8,36 +8,50 @@ clc;
 clear variables;
 close all;
 
-dataDir = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\'];
+username = getenv('username');
+dataDir = ['C:\Users\', username, '\OneDrive - The University of Nottingham\SAVE\'];
 
 fileList_raw = dir(dataDir);
     
 filterFun = @(x) regexpi(x, '^[0-9]{8}');
+%filterFun = @(x) regexpi(x, '^2022[0-9]{4}');
 temp = cellfun(filterFun, {fileList_raw.name}, 'UniformOutput', false); 
 fileList_raw = fileList_raw(~cellfun(@isempty,temp));
 
 nFiles = size(fileList_raw,1);
 
 procedureTable = [];
+eventNames_all = [];
+eventTimes_all = [];
 interProcedureTable = [];
 
-limitSize = false;
+limitSize = true;
 lt = true;
 sizeLim = 5;
 
-includeThroatSpray = false;
-supressPosChanges = true;
-fgOnly = false;
+cytospongeOnly = false;
+excludeCytosponge = false;
+excludeLaminarFlow = true;
+excludeTheatre  = true;
+includeThroatSpray = true; % This doesn't really suppress throatspray, only removes it as the first event
+excludeThroatspray = false;
+suppressPosChanges = true;
+suppressThroatSpray = false;
+excludeMasks = true;
+fgOnly = true;
 
-resultsFolder = sprintf('%s_results', datestr(now,'mm-dd-yyyy'));
+%resultsFolder = sprintf('%s_results', datestr(now,'mm-dd-yyyy'));
+resultsFolder = sprintf('%s_results', datestr(now,'yyyy-mm-dd'));
 %folder = '01-07-2021_results';
 
-dataDir = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\'];
+myDiaryFile = [dataDir, resultsFolder, '/cmdOutput.txt'];
 
 resultsFolder = [dataDir, resultsFolder];
 if ~exist(resultsFolder)
     mkdir(resultsFolder);
 end
+
+diary(myDiaryFile);
 
 label = '';
 if limitSize
@@ -56,10 +70,15 @@ if fgOnly
     label = [label, '_fg'];
 end
 
-if supressPosChanges
+if suppressPosChanges
     label = [label, '_supPos'];
 end
 
+if suppressThroatSpray
+    label = [label, '_supTS'];
+end
+
+procedureGroup = 1;
 for fileIdx = 1:nFiles
     currentFolder = fileList_raw(fileIdx).name;
     
@@ -81,18 +100,20 @@ for fileIdx = 1:nFiles
         currentFile = subFileList_raw(subfileIdx).name;
     
         test = sscanf(currentFile, '%4d%2d%2d_patient%d.csv');
+        disp(currentFile);
         
         P = test(4); % TODO ensure dates match
         
-        if ~(M==3 && D==5 && P==5)
+        if ~(M==10 && D==24)% && P==5)
             %continue;
         end
         
-        if (M==3 && D==11)
-            continue;
-        end
+        [data, datatimes, eventTimes, eventNames, avSampleTime, otherVars, bg_data, fg_data, data_v, bg_data_v, fg_data_v, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P, dataDir);
         
-        [data, datatimes, eventTimes, eventNames, avSampleTime, otherVars, bg_data, fg_data, data_v, bg_data_v, fg_data_v, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P);
+        if istable(eventNames)
+            eventNames_all = [eventNames_all; eventNames];
+            eventTimes_all = [eventTimes_all; eventTimes];
+        end
         
         if fgOnly
             dataSource = fg_data;
@@ -107,6 +128,67 @@ for fileIdx = 1:nFiles
         if isnan(data) % no valid events detected
             continue;
         end
+        
+        if cytospongeOnly
+            if otherVars.ProcedureType == 'cytosponge'
+            else
+                continue;
+            end
+        end
+        
+        if excludeCytosponge
+            if otherVars.ProcedureType == 'cytosponge'
+                continue;
+            else
+            end
+        end
+        
+        if (otherVars.ProcedureType == 'ERCP') || (otherVars.ProcedureType == 'EUS')   || (otherVars.UGIroute == 'nasal abandoned')
+            %Exclude masks and ERCP procedures
+            continue;
+        end
+        
+        if excludeMasks
+            if (otherVars.PatientMask ~= 'no') 
+                continue;
+            end
+        end
+
+        if eventTimes(1) == datetime(2020,10,13)
+            %Exclude ERCP
+            continue;
+        end
+
+        if excludeLaminarFlow
+            if (otherVars.RoomType == 'laminar flow')
+               %Only use laminar flow
+              continue;
+            end
+        end
+        
+        if excludeThroatspray
+            if (otherVars.Sedation == 'throat spray')
+               %Only use laminar flow
+              continue;
+            end
+        end
+        
+        if excludeTheatre
+            if (otherVars.RoomType == 'theatre')
+                continue
+            end
+        end
+        
+        if any(strcmpi(table2cell(eventNames), 'forced cough'))
+            a = 1;
+        end
+        %% Copy files
+        %datestring_temp = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
+        %folder_src = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring_temp,'\'];
+        
+        %mkdir(['.\', datestring_temp]);
+        %copyfile([folder_src, currentFile],['.\', datestring_temp, '\',currentFile]);
+        %copyfile([folder_src, datestring_temp,'_aerotrak.xlsx'],['.\', datestring_temp, '\',datestring_temp,'_aerotrak.xlsx']);
         
         if limitSize
             if lt
@@ -123,6 +205,14 @@ for fileIdx = 1:nFiles
         
         % Reference data
         firstEventIdx = find(datatimes >= eventTimes(1), 1);
+        
+        if (firstEventIdx == 1) % Not enough time before patient enters room, use another sample instead (halfway between procedure start
+            procStartEventIdx = find(strcmpi(table2cell(eventNames), 'procedure starts'),1);
+            procStartTime = eventTimes(procStartEventIdx);
+            fakeFirstEventTime = datatimes(1) + (procStartTime - datatimes(1))/2;
+            firstEventIdx = find(datatimes >= fakeFirstEventTime, 1);
+        end
+            
         preProcedure = dataSource(:,1:firstEventIdx-1);
         preProcedure_v = dataSource(:,1:firstEventIdx-1);
         preProcedure_av = mean(nansum(preProcedure(validDiams,:),1),2);
@@ -135,7 +225,7 @@ for fileIdx = 1:nFiles
         firstEvent = table2cell(firstEvent);
         firstEvent = firstEvent{1};
     
-        if ~isempty(regexpi(firstEvent, '.*doors locked.*'))
+        if ~isempty(regexpi(firstEvent, '.*doors locked.*')) || ~isempty(regexpi(firstEvent, '.*patient enters.*'))
             %disp(['Event ', num2str(size(procedureTable,1)+1), ': name: ', firstEvent{1}]);
             %plot(nansum(preProcedure(validDiams,:),1));
             %hold on;
@@ -220,21 +310,21 @@ for fileIdx = 1:nFiles
 %             a = 1;
 %         end
 
-        % Supress position changes
-        if supressPosChanges
+        % Suppress position changes
+        if suppressPosChanges
             compFun = @(x) regexpi(x,'.*position changes');
             posChange_temp = cellfun(compFun,table2cell(eventNames),'UniformOutput', false);
             posChange_temp = cellfun(@isempty,posChange_temp);
             posChange_temp = ~posChange_temp;
             posChange_temp = find(posChange_temp);
 
-            supressionWindow = 100;
+            suppressionWindow = 100;
             for posChange = posChange_temp.'
                 startPosChIdx = find(datatimes >= (eventTimes(posChange)), 1);
-                endPosChIdx = find(datatimes > (eventTimes(posChange) + seconds(supressionWindow)), 1) - 1;
+                endPosChIdx = find(datatimes > (eventTimes(posChange) + seconds(suppressionWindow)), 1) - 1;
                 
                 endRefIdx = startPosChIdx - 5;
-                startRefIdx = find(datatimes > (eventTimes(posChange) - seconds(supressionWindow)), 1);
+                startRefIdx = find(datatimes > (eventTimes(posChange) - seconds(suppressionWindow)), 1);
                 
                 beforeAv = mean(dataSource(:,startRefIdx:endRefIdx),2);
                 beforeAv_v = mean(dataSource_v(:,startRefIdx:endRefIdx),2);
@@ -247,6 +337,36 @@ for fileIdx = 1:nFiles
                 posChangesSuppressed = true;
             else
                 posChangesSuppressed = false;
+            end
+        end
+        
+        
+        if suppressThroatSpray
+            compFun = @(x) regexpi(x,'.*spray given');
+            throatSpray_temp = cellfun(compFun,table2cell(eventNames),'UniformOutput', false);
+            throatSpray_temp = cellfun(@isempty,throatSpray_temp);
+            throatSpray_temp = ~throatSpray_temp;
+            throatSpray_temp = find(throatSpray_temp);
+
+            suppressionWindow = 100;
+            for throatSpray = throatSpray_temp.'
+                startThSprIdx = find(datatimes >= (eventTimes(throatSpray)), 1);
+                endThSprIdx = find(datatimes > (eventTimes(throatSpray) + seconds(suppressionWindow)), 1) - 1;
+                
+                endRefIdx = startThSprIdx - 5;
+                startRefIdx = find(datatimes > (eventTimes(throatSpray) - seconds(suppressionWindow)), 1);
+                
+                beforeAv = mean(dataSource(:,startRefIdx:endRefIdx),2);
+                beforeAv_v = mean(dataSource_v(:,startRefIdx:endRefIdx),2);
+
+                dataSource(:,startThSprIdx:endThSprIdx) = repmat(beforeAv,1,endThSprIdx-startThSprIdx+1);
+                dataSource_v(:,startThSprIdx:endThSprIdx) = repmat(beforeAv_v,1,endThSprIdx-startThSprIdx+1);
+            end
+            
+            if ~isempty(throatSpray_temp)
+                throatSpraySuppressed = true;
+            else
+                throatSpraySuppressed = false;
             end
         end
         
@@ -356,16 +476,25 @@ for fileIdx = 1:nFiles
         
         tempResults.StudyNumber = otherVars.StudyNumber;
         
-        if supressPosChanges
-            tempResults.posChangesSupressed = posChangesSuppressed;
+        if suppressPosChanges
+            tempResults.posChangesSuppressed = posChangesSuppressed;
+        end
+        
+        if suppressThroatSpray
+            tempResults.throatSpraySuppressed = throatSpraySuppressed;
         end
         
         tComb = join(otherVars,tempResults);
         
-        if (tComb.RoomType == 'theatre') % || (tComb.PatientMask == 'yes')
-            %Exclude masks and ERCP procedures
-            continue;
+        tComb.procedureGroup = procedureGroup;
+        if ~isempty(data_next)
+            consecProcedure = true;
+        else
+            procedureGroup = procedureGroup+1;
         end
+        
+        % Test the BMI-years hypothesis
+        tComb.BMIyears = tComb.BMI * tComb.Age;
         
         if isempty(procedureTable)
             procedureTable = tComb;
@@ -404,6 +533,7 @@ for fileIdx = 1:nFiles
             if (validInterval)
                 
                 [bg_next, fg_next] = splitBGFG(data_next, avSampleTime, true(size(data_next,2),1));
+                bg_next(bg_next < 0) = 0; %remove zeros
                 
                 avLevel = 5;
                 
@@ -433,6 +563,7 @@ for fileIdx = 1:nFiles
                 tempResults_next.count_10min_sum = count_10min_sum;
                 tempResults_next.count_20min_all = {count_20min_all};
                 tempResults_next.count_20min_sum = count_20min_sum;
+                tempResults_next.procedureDuration = procedureDuration;
 
                 %TODO repeat for each 
                 logvals_norm = log(nansum(bg_next(validDiams,:),1)./nansum(bg_next(validDiams,1)));
@@ -441,6 +572,7 @@ for fileIdx = 1:nFiles
                 logdiff = diff(logvals)/avSampleTime;
                 logdiff_norm = diff(logvals_norm)/avSampleTime;
                 validslope = logdiff < 0;
+                validslope = [validslope(1), validslope];
                 tempFiltBySlope = logvals;
                 tempFiltBySlope(~validslope) = NaN;
                 
@@ -451,19 +583,25 @@ for fileIdx = 1:nFiles
                 lengths = [];
                 slopes = [];
                 count = 0;
-                sizethresh = 4; % Max length of segment to fit slope to
+                sizethresh = 3; % Max length of segment to fit slope to
                 for kk = 1:size(tempFiltBySlope,2)
-                    if isnan(tempFiltBySlope(kk)) || count >= sizethresh
-                        if ~isempty(tempSlope)
-                            x = 0:size(tempSlope,1)-1;
+                    if isnan(tempFiltBySlope(kk)) || isinf(tempFiltBySlope(kk)) || count >= sizethresh
+                        if count > 1
+                            x = (0:size(tempSlope,1)-1).';
                             x = x*avSampleTime;
                             p = polyfit(x, tempSlope,1);
+                            
+                            if isnan(p(1))
+                                a=1;
+                            end
                             slopes = [slopes; p(1)];
                             lengths = [lengths; size(tempSlope,1)];
-                            tempSlope = [];
                         end
+                        tempSlope = [];
                         count = 0;
-                    else
+                    end
+                    
+                    if ~isnan(tempFiltBySlope(kk)) && ~isinf(tempFiltBySlope(kk)) 
                         tempSlope = [tempSlope; tempFiltBySlope(kk)];
                         count = count+1;
                     end
@@ -532,28 +670,437 @@ for fileIdx = 1:nFiles
 end
 
 upperGITable = procedureTable(procedureTable.Procedure == 'upper GI', :);
+upperGITable_oral = procedureTable(procedureTable.Procedure == 'upper GI' & procedureTable.UGIroute == 'oral', :);
+upperGITable_nasal = procedureTable(procedureTable.Procedure == 'upper GI' & procedureTable.UGIroute == 'nasal', :);
 lowerGITable = procedureTable(procedureTable.Procedure == 'lower GI', :);
+lowerGITable_colonoscopy = procedureTable(procedureTable.Procedure == 'lower GI' & procedureTable.ProcedureType == 'colonoscopy', :);
+lowerGITable_sigmoid = procedureTable(procedureTable.Procedure == 'lower GI' & procedureTable.ProcedureType == 'sigmoidoscopy', :);
 
-figure('units','normalized','outerposition',[0 0 1 1]);
-subplot(1,2,1);
-pie(categorical(lowerGITable.nearestEvent_sum));
-title('Lower GI max events');
+procGroups = categories(categorical(procedureTable.procedureGroup));
+procGroupCounts = countcats(categorical(procedureTable.procedureGroup));
+procGroupCounts_counts = countcats(categorical(procGroupCounts));
+procGroupCounts_cats = categories(categorical(procGroupCounts));
+bar(categorical(procGroupCounts_cats), (procGroupCounts_counts.*str2num(cell2mat(procGroupCounts_cats)))/size(procedureTable,1)*100);
+xlabel('Procedure group size');
+ylabel('Percentage of procedures');
 
-subplot(1,2,2);
-pie(categorical(upperGITable.nearestEvent_sum));
-title('Upper GI max events');
+%% General stats for DEN paper
+age_ugi = upperGITable_oral.Age;
+age_ugi_conv = age_ugi(upperGITable_oral.RoomType == 'endoscopy');
+age_ugi_lam = age_ugi(upperGITable_oral.RoomType == 'laminar flow');
+age_ugi_asent = age_ugi(upperGITable_oral.RoomType == 'endo+airsentry');
+
+[h_age_lam, p_age_lam, ci_age_lam] = ttest2(age_ugi_conv, age_ugi_lam);
+disp(['UGI oral laminar flow vs conv age: p = ', num2str(p_age_lam)]);
+[h_age_asent, p_age_asent, ci_age_asent] = ttest2(age_ugi_conv, age_ugi_asent);
+disp(['UGI oral airsentry vs conv age: p = ', num2str(p_age_asent)]);
+
+sex_ugi = upperGITable_oral.Sex;
+sex_ugi_conv = sex_ugi(upperGITable_oral.RoomType == 'endoscopy');
+sex_ugi_lam = sex_ugi(upperGITable_oral.RoomType == 'laminar flow');
+sex_ugi_asent = sex_ugi(upperGITable_oral.RoomType == 'endo+airsentry');
+
+x = sum(sex_ugi_conv == 'female');
+n = numel(sex_ugi_conv);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sex_conv_distp(p_idx) = binopdf(x,n,current_p);
+end
+sex_conv_distp = sex_conv_distp ./ (sum(sex_conv_distp)*dp);
+
+x = sum(sex_ugi_lam == 'female');
+n = numel(sex_ugi_lam);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sex_lam_distp(p_idx) = binopdf(x,n,current_p);
+end
+sex_lam_distp = sex_lam_distp ./ (sum(sex_lam_distp).*dp);
+olap = min([sex_conv_distp;sex_lam_distp;]);
+p_sex_lam = sum(olap.*dp);
+
+% plot(p_vals, sex_conv_distp);
+% hold on;
+% plot(p_vals, sex_lam_distp, 'r');
+% plot(p_vals, olap,'g');
+
+x = sum(sex_ugi_asent == 'female');
+n = numel(sex_ugi_asent);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sex_asent_distp(p_idx) = binopdf(x,n,current_p);
+end
+sex_asent_distp = sex_asent_distp ./ (sum(sex_asent_distp).*dp);
+olap = min([sex_conv_distp;sex_asent_distp;]);
+p_sex_asent = sum(olap.*dp);
+
+disp(['UGI oral laminar flow vs conv sex : p = ', num2str(p_sex_lam)]);
+disp(['UGI oral airsentry vs conv sex: p = ', num2str(p_sex_asent)]);
+
+
+bmi_ugi = upperGITable_oral.BMI;
+bmi_ugi_conv = bmi_ugi(upperGITable_oral.RoomType == 'endoscopy');
+bmi_ugi_lam = bmi_ugi(upperGITable_oral.RoomType == 'laminar flow');
+bmi_ugi_asent = bmi_ugi(upperGITable_oral.RoomType == 'endo+airsentry');
+
+[h_bmi_lam, p_bmi_lam, ci_bmi_lam] = ttest2(bmi_ugi_conv, bmi_ugi_lam);
+disp(['UGI oral laminar flow vs conv bmi: p = ', num2str(p_bmi_lam)]);
+[h_bmi_asent, p_bmi_asent, ci_bmi_asent] = ttest2(bmi_ugi_conv, bmi_ugi_asent);
+disp(['UGI oral airsentry vs conv bmi: p = ', num2str(p_bmi_asent)]);
+
+smoking_ugi = upperGITable_oral.Smoker;
+smoking_ugi_conv = smoking_ugi(upperGITable_oral.RoomType == 'endoscopy');
+smoking_ugi_lam = smoking_ugi(upperGITable_oral.RoomType == 'laminar flow');
+smoking_ugi_asent = smoking_ugi(upperGITable_oral.RoomType == 'endo+airsentry');
+
+x = sum(smoking_ugi_conv == 'yes');
+n = numel(smoking_ugi_conv);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    smoking_conv_distp(p_idx) = binopdf(x,n,current_p);
+end
+smoking_conv_distp = smoking_conv_distp ./ (sum(smoking_conv_distp)*dp);
+
+x = sum(smoking_ugi_lam == 'yes');
+n = numel(smoking_ugi_lam);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    smoking_lam_distp(p_idx) = binopdf(x,n,current_p);
+end
+smoking_lam_distp = smoking_lam_distp ./ (sum(smoking_lam_distp).*dp);
+olap = min([smoking_conv_distp;smoking_lam_distp;]);
+p_smoking_lam = sum(olap.*dp);
+
+% plot(p_vals, smoking_conv_distp);
+% hold on;
+% plot(p_vals, smoking_lam_distp, 'r');
+% plot(p_vals, olap,'g');
+
+x = sum(smoking_ugi_asent == 'yes');
+n = numel(smoking_ugi_asent);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    smoking_asent_distp(p_idx) = binopdf(x,n,current_p);
+end
+smoking_asent_distp = smoking_asent_distp ./ (sum(smoking_asent_distp).*dp);
+olap = min([smoking_conv_distp;smoking_asent_distp;]);
+p_smoking_asent = sum(olap.*dp);
+
+disp(['UGI oral laminar flow vs conv smoking : p = ', num2str(p_smoking_lam)]);
+disp(['UGI oral airsentry vs conv smoking: p = ', num2str(p_smoking_asent)]);
+
+
+hiatus_ugi = upperGITable_oral.HiatusHernia;
+hiatus_ugi_conv = hiatus_ugi(upperGITable_oral.RoomType == 'endoscopy');
+hiatus_ugi_lam = hiatus_ugi(upperGITable_oral.RoomType == 'laminar flow');
+hiatus_ugi_asent = hiatus_ugi(upperGITable_oral.RoomType == 'endo+airsentry');
+
+x = sum(hiatus_ugi_conv == 'yes');
+n = numel(hiatus_ugi_conv);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    hiatus_conv_distp(p_idx) = binopdf(x,n,current_p);
+end
+hiatus_conv_distp = hiatus_conv_distp ./ (sum(hiatus_conv_distp)*dp);
+
+x = sum(hiatus_ugi_lam == 'yes');
+n = numel(hiatus_ugi_lam);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    hiatus_lam_distp(p_idx) = binopdf(x,n,current_p);
+end
+hiatus_lam_distp = hiatus_lam_distp ./ (sum(hiatus_lam_distp).*dp);
+olap = min([hiatus_conv_distp;hiatus_lam_distp;]);
+p_hiatus_lam = sum(olap.*dp);
+
+% plot(p_vals, hiatus_conv_distp);
+% hold on;
+% plot(p_vals, hiatus_lam_distp, 'r');
+% plot(p_vals, olap,'g');
+
+x = sum(hiatus_ugi_asent == 'yes');
+n = numel(hiatus_ugi_asent);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    hiatus_asent_distp(p_idx) = binopdf(x,n,current_p);
+end
+hiatus_asent_distp = hiatus_asent_distp ./ (sum(hiatus_asent_distp).*dp);
+olap = min([hiatus_conv_distp;hiatus_asent_distp;]);
+p_hiatus_asent = sum(olap.*dp);
+
+disp(['UGI oral laminar flow vs conv hiatus : p = ', num2str(p_hiatus_lam)]);
+disp(['UGI oral airsentry vs conv hiatus: p = ', num2str(p_hiatus_asent)]);
+
+
+
+sedation_ugi = upperGITable_oral.Sedation;
+sedation_ugi_conv = sedation_ugi(upperGITable_oral.RoomType == 'endoscopy');
+sedation_ugi_lam = sedation_ugi(upperGITable_oral.RoomType == 'laminar flow');
+sedation_ugi_asent = sedation_ugi(upperGITable_oral.RoomType == 'endo+airsentry');
+
+x = sum(sedation_ugi_conv == 'midazolam');
+n = numel(sedation_ugi_conv);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sedation_conv_distp(p_idx) = binopdf(x,n,current_p);
+end
+sedation_conv_distp = sedation_conv_distp ./ (sum(sedation_conv_distp)*dp);
+
+x = sum(sedation_ugi_lam == 'midazolam');
+n = numel(sedation_ugi_lam);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sedation_lam_distp(p_idx) = binopdf(x,n,current_p);
+end
+sedation_lam_distp = sedation_lam_distp ./ (sum(sedation_lam_distp).*dp);
+olap = min([sedation_conv_distp;sedation_lam_distp;]);
+p_sedation_lam = sum(olap.*dp);
+
+% plot(p_vals, sedation_conv_distp);
+% hold on;
+% plot(p_vals, sedation_lam_distp, 'r');
+% plot(p_vals, olap,'g');
+
+x = sum(sedation_ugi_asent == 'midazolam');
+n = numel(sedation_ugi_asent);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sedation_asent_distp(p_idx) = binopdf(x,n,current_p);
+end
+sedation_asent_distp = sedation_asent_distp ./ (sum(sedation_asent_distp).*dp);
+olap = min([sedation_conv_distp;sedation_asent_distp;]);
+p_sedation_asent = sum(olap.*dp);
+
+disp(['UGI oral laminar flow vs conv sedation : p = ', num2str(p_sedation_lam)]);
+disp(['UGI oral airsentry vs conv sedation: p = ', num2str(p_sedation_asent)]);
+
+%% General stats for cytosponge paper
+age_ugi = upperGITable_oral.Age;
+age_ugi_ogd = age_ugi(upperGITable_oral.ProcedureType == 'gastroscopy');
+age_ugi_cyto = age_ugi(upperGITable_oral.ProcedureType == 'cytosponge');
+
+[h_age_cyto, p_age_cyto, ci_age_cyto] = ttest2(age_ugi_ogd, age_ugi_cyto);
+disp(['Age OGD: ', num2str(min(age_ugi_ogd)), ' - ', num2str(max(age_ugi_ogd)), ' median ', num2str(median(age_ugi_ogd))]);
+disp(['Age Cyto: ', num2str(min(age_ugi_cyto)), ' - ', num2str(max(age_ugi_cyto)), ' median ', num2str(median(age_ugi_cyto))]);
+disp(['UGI gastroscopy vs cytosponge age: p = ', num2str(p_age_cyto)]);
+
+sex_ugi = upperGITable_oral.Sex;
+sex_ugi_ogd = sex_ugi(upperGITable_oral.ProcedureType == 'gastroscopy');
+sex_ugi_cyto = sex_ugi(upperGITable_oral.ProcedureType == 'cytosponge');
+
+x = sum(sex_ugi_ogd == 'female');
+n = numel(sex_ugi_ogd);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sex_ogd_distp(p_idx) = binopdf(x,n,current_p);
+end
+sex_ogd_distp = sex_ogd_distp ./ (sum(sex_ogd_distp)*dp);
+
+x = sum(sex_ugi_cyto == 'female');
+n = numel(sex_ugi_cyto);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sex_cyto_distp(p_idx) = binopdf(x,n,current_p);
+end
+sex_cyto_distp = sex_cyto_distp ./ (sum(sex_cyto_distp).*dp);
+olap = min([sex_ogd_distp;sex_cyto_distp;]);
+p_sex_cyto = sum(olap.*dp);
+
+disp(['Sex OGD: M - ', num2str(sum(sex_ugi_ogd == 'male')), ', F - ', num2str(sum(sex_ugi_ogd == 'female'))]);
+disp(['Sex cyto: M - ', num2str(sum(sex_ugi_cyto == 'male')), ', F - ', num2str(sum(sex_ugi_cyto == 'female'))]);
+disp(['UGI oral cytosonge vs ogd sex : p = ', num2str(p_sex_cyto)]);
+
+
+bmi_ugi = upperGITable_oral.BMI;
+bmi_ugi_ogd = bmi_ugi(upperGITable_oral.ProcedureType == 'gastroscopy');
+bmi_ugi_cyto = bmi_ugi(upperGITable_oral.ProcedureType == 'cytosponge');
+
+[h_bmi_cyto, p_bmi_cyto, ci_bmi_cyto] = ttest2(bmi_ugi_ogd, bmi_ugi_cyto);
+disp(['BMI OGD: ', num2str(min(bmi_ugi_ogd)), ' - ', num2str(max(bmi_ugi_ogd)), ' median ', num2str(median(bmi_ugi_ogd))]);
+disp(['BMI Cyto: ', num2str(min(bmi_ugi_cyto)), ' - ', num2str(max(bmi_ugi_cyto)), ' median ', num2str(nanmedian(bmi_ugi_cyto))]);
+disp(['UGI oral cytosponge vs ogd bmi: p = ', num2str(p_bmi_cyto)]);
+
+smoking_ugi = upperGITable_oral.Smoker;
+smoking_ugi_ogd = smoking_ugi(upperGITable_oral.ProcedureType == 'gastroscopy');
+smoking_ugi_cyto = smoking_ugi(upperGITable_oral.ProcedureType == 'cytosponge');
+
+x = sum(smoking_ugi_ogd == 'yes');
+n = numel(smoking_ugi_ogd);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    smoking_ogd_distp(p_idx) = binopdf(x,n,current_p);
+end
+smoking_ogd_distp = smoking_ogd_distp ./ (sum(smoking_ogd_distp)*dp);
+
+x = sum(smoking_ugi_cyto == 'yes');
+n = numel(smoking_ugi_cyto);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    smoking_cyto_distp(p_idx) = binopdf(x,n,current_p);
+end
+smoking_cyto_distp = smoking_cyto_distp ./ (sum(smoking_cyto_distp).*dp);
+olap = min([smoking_ogd_distp;smoking_cyto_distp;]);
+p_smoking_cyto = sum(olap.*dp);
+disp(['Smoking OGD: Y - ', num2str(sum(smoking_ugi_ogd == 'yes')), ', no - ', num2str(sum(smoking_ugi_ogd == 'no'))]);
+disp(['Smoking cyto: Y - ', num2str(sum(smoking_ugi_cyto == 'yes')), ', no - ', num2str(sum(smoking_ugi_cyto == 'no'))]);
+disp(['UGI oral cytosponge vs ogd smoking : p = ', num2str(p_smoking_cyto)]);
+
+
+
+sedation_ugi = upperGITable_oral.Sedation;
+sedation_ugi_ogd = sedation_ugi(upperGITable_oral.ProcedureType == 'gastroscopy');
+sedation_ugi_cyto = sedation_ugi(upperGITable_oral.ProcedureType == 'cytosponge');
+
+%x = sum(sedation_ugi_ogd == 'throatspray');
+x = numel(sedation_ugi_ogd);
+n = numel(sedation_ugi_ogd);
+p_vals = linspace(0,1,100);
+dp = p_vals(2) - p_vals(1);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sedation_ogd_distp(p_idx) = binopdf(x,n,current_p);
+end
+sedation_ogd_distp = sedation_ogd_distp ./ (sum(sedation_ogd_distp)*dp);
+
+x = sum(sedation_ugi_cyto == 'throat spray');
+n = numel(sedation_ugi_cyto);
+for p_idx = 1:size(p_vals,2)
+    current_p = p_vals(p_idx);
+    sedation_cyto_distp(p_idx) = binopdf(x,n,current_p);
+end
+sedation_cyto_distp = sedation_cyto_distp ./ (sum(sedation_cyto_distp).*dp);
+olap = min([sedation_ogd_distp;sedation_cyto_distp;]);
+p_sedation_cyto = sum(olap.*dp);
+
+disp(['TS cyto: Y - ', num2str(sum(sedation_ugi_cyto == 'throat spray')), ', no - ', num2str(sum(sedation_ugi_cyto == 'none'))]);
+disp(['UGI oral cytosponge vs ogd sedation : p = ', num2str(p_sedation_cyto)]);
+
+%% Coughs room type
+coughCount = upperGITable_oral.CoughEvents;
+coughCount = coughCount./ upperGITable_oral.procedureDuration*20;
+coughCount_ugi_conv = coughCount(upperGITable_oral.RoomType == 'endoscopy');
+coughCount_ugi_lam = coughCount(upperGITable_oral.RoomType == 'laminar flow');
+coughCount_ugi_asent = coughCount(upperGITable_oral.RoomType == 'endo+airsentry');
+
+disp(['Mean no coughs: conv: ', num2str(mean(coughCount_ugi_conv)), ' laminar: ', num2str(mean(coughCount_ugi_lam)), ' air sentry: ', num2str(mean(coughCount_ugi_asent))]);
+
+if ~isempty(coughCount_ugi_conv) && ~isempty(coughCount_ugi_lam)
+    pd_c = fitdist(coughCount_ugi_conv, 'Poisson');
+    pd_g = fitdist(coughCount_ugi_lam, 'Poisson');
+
+    objFun2 = @(x) objFun(x,pd_c, pd_g);
+    pVal = fmincon(objFun2,0.05,[],[],[],[],[1e-6],[0.999]);
+
+    disp(['Cough count p val (conv v. lam): ', num2str(pVal), ',  ratio = ', num2str(mean(pd_c)/mean(pd_g))]);
+end
+
+if ~isempty(coughCount_ugi_conv) && ~isempty(coughCount_ugi_asent)
+    pd_c = fitdist(coughCount_ugi_conv, 'Poisson');
+    pd_g = fitdist(coughCount_ugi_asent, 'Poisson');
+
+    objFun2 = @(x) objFun(x,pd_c, pd_g);
+    pVal = fmincon(objFun2,0.05,[],[],[],[],[1e-6],[0.999]);
+
+    disp(['Cough count p val (conv v. asent): ', num2str(pVal), ',  ratio = ', num2str(mean(pd_c)/mean(pd_g))]);
+end
+
+%% Coughs cyto
+coughCount = upperGITable_oral.CoughEvents;
+coughCount = coughCount./ upperGITable_oral.procedureDuration*20;
+coughCount_ugi_endo = coughCount(upperGITable_oral.ProcedureType == 'gastroscopy');
+coughCount_ugi_cyto = coughCount(upperGITable_oral.ProcedureType == 'cytosponge');
+
+disp(['Mean no coughs: endo: ', num2str(mean(coughCount_ugi_endo)), ' cyto: ', num2str(mean(coughCount_ugi_cyto))]);
+
+if ~isempty(coughCount_ugi_endo) && ~isempty(coughCount_ugi_cyto)
+    pd_e = fitdist(coughCount_ugi_endo, 'Poisson');
+    pd_c = fitdist(coughCount_ugi_cyto, 'Poisson');
+
+    objFun2 = @(x) objFun(x,pd_e, pd_c);
+    pVal = fmincon(objFun2,0.05,[],[],[],[],[1e-6],[0.999]);
+
+    disp(['Cough count p val (endo v. cyto): ', num2str(pVal), ',  ratio = ', num2str(mean(pd_e)/mean(pd_c))]);
+end
+
+%%
+
+procedureDuration = upperGITable_oral.procedureDuration;
+procedureDuration_ugi_conv = procedureDuration(upperGITable_oral.RoomType == 'endoscopy');
+procedureDuration_ugi_lam = procedureDuration(upperGITable_oral.RoomType == 'laminar flow');
+procedureDuration_ugi_asent = procedureDuration(upperGITable_oral.RoomType == 'endo+airsentry');
+
+disp(['Means: conv: ',  num2str(median(procedureDuration_ugi_conv)), ' laminar: ', num2str(median(procedureDuration_ugi_lam)), ' airsentry: ',  num2str(median(procedureDuration_ugi_asent))]);
+[h_dur_lam, p_dur_lam, ci_dur_lam] = ttest2(log(procedureDuration_ugi_conv), log(procedureDuration_ugi_lam));
+disp(['UGI oral laminar flow vs conv dur: p = ', num2str(p_dur_lam)]);
+[h_dur_asent, p_dur_asent, ci_dur_asent] = ttest2(log(procedureDuration_ugi_conv), log(procedureDuration_ugi_asent));
+disp(['UGI oral airsentry vs conv dur: p = ', num2str(p_dur_asent)]);
+
+
+
+procedureDuration = upperGITable_oral.procedureDuration;
+procedureDuration_ugi_ogd = procedureDuration(upperGITable_oral.ProcedureType == 'gastroscopy');
+procedureDuration_ugi_cyto = procedureDuration(upperGITable_oral.ProcedureType == 'cytosponge');
+
+disp(['Means: ogd: ',  num2str(median(procedureDuration_ugi_ogd)), ' cyto: ', num2str(median(procedureDuration_ugi_cyto))]);
+[h_dur_lam, p_dur_cyto, ci_dur_cyto] = ttest2(log(procedureDuration_ugi_ogd), log(procedureDuration_ugi_cyto));
+disp(['UGI oral cyto vs ogd dur: p = ', num2str(p_dur_cyto)]);
+%%
+if (~isempty(upperGITable_oral))
+    figure('units','normalized','outerposition',[0 0 1 1]);
+    subplot(1,3,1);
+    pie(categorical(upperGITable_oral.nearestEvent_sum));
+    title('Upper GI oral max events');
+end
+
+
+if (~isempty(upperGITable_nasal))
+    subplot(1,3,2);
+    pie(categorical(upperGITable_nasal.nearestEvent_sum));
+    title('Upper GI nasal max events');
+end
+
+if (~isempty(lowerGITable))
+    subplot(1,3,3);
+    pie(categorical(lowerGITable.nearestEvent_sum));
+    title('Lower GI max events');
+end
+
+
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_pie_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_pie_', label, '.png']));
 
 figure('units','normalized','outerposition',[0 0 1 1]);
-subplot(1,2,1);
-pie(categorical(lowerGITable.nearestEvent_sum_v));
-title('Lower GI max events (volume)');
+subplot(1,3,1);
 
-subplot(1,2,2);
-pie(categorical(upperGITable.nearestEvent_sum_v));
-title('Upper GI max events (volume)');
+if (~isempty(upperGITable_oral))
+    pie(categorical(upperGITable_oral.nearestEvent_sum_v));
+    title('Upper GI oral max events (volume)');
+end
+
+if (~isempty(upperGITable_nasal))
+    subplot(1,3,2);
+    pie(categorical(upperGITable_nasal.nearestEvent_sum_v));
+    title('Upper GI nasal max events (volume)');
+end
+
+if (~isempty(lowerGITable))
+    subplot(1,3,3);
+    pie(categorical(lowerGITable.nearestEvent_sum_v));
+    title('Lower GI max events (volume)');
+end
+
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_pie_v_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_pie_v_', label, '.png']));
@@ -561,28 +1108,51 @@ saveas(gcf,fullfile(resultsFolder,['fullproc_pie_v_', label, '.png']));
 %%%
 totPart = procedureTable.procedureTot_sum;
 totPart_cat = procedureTable.Procedure;
+route_cat = procedureTable.UGIroute;
+type_cat = procedureTable.ProcedureType;
 
 totPart_pre = procedureTable.preProcedureAv_sum .* procedureTable.procedureDuration * 60;
 totPart_pre_cat = categorical(ones(size(totPart_pre)),[0,1],{'a','pre-procedure'});
 
 [~, p_lp, ci_lp] = ttest(log(totPart(totPart_cat == 'lower GI')), log(totPart_pre(totPart_cat == 'lower GI')));
-[~, p_up, ci_up] = ttest(log(totPart(totPart_cat == 'upper GI')), log(totPart_pre(totPart_cat == 'upper GI')));
-[~, p_lu, ci_lu] = ttest2(log(totPart(totPart_cat == 'lower GI')./procedureTable.procedureDuration(totPart_cat == 'lower GI')), log(totPart(totPart_cat == 'upper GI')./procedureTable.procedureDuration(totPart_cat == 'upper GI')));
+[~, p_uop, ci_uop] = ttest(log(totPart(totPart_cat == 'upper GI' & route_cat == 'oral')), log(totPart_pre(totPart_cat == 'upper GI'& route_cat == 'oral')));
+[~, p_unp, ci_unp] = ttest(log(totPart(totPart_cat == 'upper GI' & route_cat == 'nasal')), log(totPart_pre(totPart_cat == 'upper GI'& route_cat == 'nasal')));
+[~, p_luo, ci_luo] = ttest2(log(totPart(totPart_cat == 'lower GI')./procedureTable.procedureDuration(totPart_cat == 'lower GI')), log(totPart(totPart_cat == 'upper GI' & route_cat == 'oral')./procedureTable.procedureDuration(totPart_cat == 'upper GI'& route_cat == 'oral')));
+[~, p_lun, ci_lun] = ttest2(log(totPart(totPart_cat == 'lower GI')./procedureTable.procedureDuration(totPart_cat == 'lower GI')), log(totPart(totPart_cat == 'upper GI' & route_cat == 'nasal')./procedureTable.procedureDuration(totPart_cat == 'upper GI'& route_cat == 'nasal')));
+[~, p_uno, ci_uno] = ttest2(log(totPart(totPart_cat == 'upper GI' & route_cat == 'oral')./procedureTable.procedureDuration(totPart_cat == 'upper GI' & route_cat == 'oral')), log(totPart(totPart_cat == 'upper GI' & route_cat == 'nasal')./procedureTable.procedureDuration(totPart_cat == 'upper GI'& route_cat == 'nasal')));
+
+[~, p_lcls, ci_lcls] = ttest2(log(totPart(totPart_cat == 'lower GI' & type_cat == 'colonoscopy')./procedureTable.procedureDuration(totPart_cat == 'lower GI' & type_cat == 'colonoscopy')), log(totPart(totPart_cat == 'lower GI' & type_cat == 'sigmoidoscopy')./procedureTable.procedureDuration(totPart_cat == 'lower GI'& type_cat == 'sigmoidoscopy')));
+
+
 
 ratio_lp = exp(ci_lp);
-ratio_up = exp(ci_up);
-ratio_lu = exp(ci_lu);
+ratio_uop = exp(ci_uop);
+ratio_unp = exp(ci_unp);
+ratio_luo = exp(ci_luo);
+ratio_lun = exp(ci_lun);
+ratio_uno = exp(ci_uno);
+ratio_lcls = exp(ci_lcls);
 
 meanLGI = exp(mean(log(totPart(totPart_cat == 'lower GI'))));
-meanUGI = exp(mean(log(totPart(totPart_cat == 'upper GI'))));
+meanUGI_o = exp(mean(log(totPart(totPart_cat == 'upper GI' & route_cat == 'oral'))));
+meanUGI_n = exp(mean(log(totPart(totPart_cat == 'upper GI' & route_cat == 'nasal'))));
+meanLGI_colon = exp(mean(log(totPart(totPart_cat == 'lower GI' & type_cat == 'colonoscopy'))));
+meanLGI_sigmoid = exp(mean(log(totPart(totPart_cat == 'lower GI' & type_cat == 'sigmoidoscopy'))));
 
 mean_lp = sqrt(ratio_lp(1) * ratio_lp(2));
-mean_up = sqrt(ratio_up(1) * ratio_up(2));
-mean_lu = sqrt(ratio_lu(1) * ratio_lu(2));
+mean_uop = sqrt(ratio_uop(1) * ratio_uop(2));
+mean_unp = sqrt(ratio_unp(1) * ratio_unp(2));
+mean_luo = sqrt(ratio_luo(1) * ratio_luo(2));
+mean_lun = sqrt(ratio_lun(1) * ratio_lun(2));
+mean_uno = sqrt(ratio_uno(1) * ratio_uno(2));
+mean_lcls = sqrt(ratio_lcls(1) * ratio_lcls(2));
 
 disp(['Total LGI-pre ratio: ', num2str(mean_lp), ' (', num2str(ratio_lp(1)), '-', num2str(ratio_lp(2)), ') p=', num2str(p_lp), ', mean = ', num2str(meanLGI)]);
-disp(['Total UGI-pre ratio: ', num2str(mean_up), ' (', num2str(ratio_up(1)), '-', num2str(ratio_up(2)), ') p=', num2str(p_up), ', mean = ', num2str(meanUGI)]);
-disp(['Total LGI-UGI ratio: ', num2str(mean_lu), ' (', num2str(ratio_lu(1)), '-', num2str(ratio_lu(2)), ') p=', num2str(p_lu)]);
+disp(['Total UGI-oral-pre ratio: ', num2str(mean_uop), ' (', num2str(ratio_uop(1)), '-', num2str(ratio_uop(2)), ') p=', num2str(p_uop), ', mean = ', num2str(meanUGI_o)]);
+disp(['Total UGI-nasal-pre ratio: ', num2str(mean_unp), ' (', num2str(ratio_unp(1)), '-', num2str(ratio_unp(2)), ') p=', num2str(p_unp), ', mean = ', num2str(meanUGI_n)]);
+disp(['Total LGI-UGI_o ratio: ', num2str(mean_luo), ' (', num2str(ratio_luo(1)), '-', num2str(ratio_luo(2)), ') p=', num2str(p_luo)]);
+disp(['Colonoscopy mean: ', num2str(meanLGI_colon)]);
+disp(['Sigmoidoscopy mean: ', num2str(meanLGI_sigmoid)]);
 
 maxPart = procedureTable.procedureMax_sum;
 maxPart_cat = procedureTable.Procedure;
@@ -622,12 +1192,29 @@ meanPart_cat = procedureTable.Procedure;
 figure('units','normalized','outerposition',[0 0 1 1]);
 subplot(1,3,1);
 %boxplot(totPart, totPart_cat);
-violinplot([totPart./totPart_pre], [totPart_cat]);
+totPart_cat2 = addcats(totPart_cat, 'nasal');
+totPart_cat2(route_cat == 'nasal') = categorical({'nasal'},categories(totPart_cat2));
+
+%% To avoid infinite, a hack
+totPart_pre(totPart_pre == 0) = min(totPart_pre(totPart_pre > 0));
+
+violinplot([totPart./totPart_pre], [totPart_cat2]);
 title('Total no. particles');
 
 text(0.5, max(totPart./totPart_pre)*0.8,['Total LGI-pre ratio: ', num2str(mean_lp), ' (', num2str(ratio_lp(1)), '-', num2str(ratio_lp(2)), ') p=', num2str(p_lp), ', mean = ', num2str(meanLGI)]);
-text(0.5, max(totPart./totPart_pre)*0.6,['Total UGI-pre ratio: ', num2str(mean_up), ' (', num2str(ratio_up(1)), '-', num2str(ratio_up(2)), ') p=', num2str(p_up), ', mean = ', num2str(meanUGI)]);
-text(0.5, max(totPart./totPart_pre)*0.4,['Total LGI-UGI ratio: ', num2str(mean_lu), ' (', num2str(ratio_lu(1)), '-', num2str(ratio_lu(2)), ') p=', num2str(p_lu)]);
+text(0.5, max(totPart./totPart_pre)*0.7,['Total UGI_oral-pre ratio: ', num2str(mean_uop), ' (', num2str(ratio_uop(1)), '-', num2str(ratio_uop(2)), ') p=', num2str(p_uop), ', mean = ', num2str(meanUGI_o)]);
+text(0.5, max(totPart./totPart_pre)*0.6,['Total UGI_nasal-pre ratio: ', num2str(mean_unp), ' (', num2str(ratio_unp(1)), '-', num2str(ratio_unp(2)), ') p=', num2str(p_unp), ', mean = ', num2str(meanUGI_n)]);
+text(0.5, max(totPart./totPart_pre)*0.5,['Total LGI-UGI_o ratio: ', num2str(mean_luo), ' (', num2str(ratio_luo(1)), '-', num2str(ratio_luo(2)), ') p=', num2str(p_luo)]);
+text(0.5, max(totPart./totPart_pre)*0.4,['Total LGI-UGI_n ratio: ', num2str(mean_lun), ' (', num2str(ratio_lun(1)), '-', num2str(ratio_lun(2)), ') p=', num2str(p_lun)]);
+text(0.5, max(totPart./totPart_pre)*0.3,['Total UGI_o-UGI_n ratio: ', num2str(mean_uno), ' (', num2str(ratio_uno(1)), '-', num2str(ratio_uno(2)), ') p=', num2str(p_uno)]);
+
+disp(['Total LGI-pre ratio: ', num2str(mean_lp), ' (', num2str(ratio_lp(1)), '-', num2str(ratio_lp(2)), ') p=', num2str(p_lp), ', mean = ', num2str(meanLGI)]);
+disp(['Total UGI_oral-pre ratio: ', num2str(mean_uop), ' (', num2str(ratio_uop(1)), '-', num2str(ratio_uop(2)), ') p=', num2str(p_uop), ', mean = ', num2str(meanUGI_o)]);
+disp(['Total UGI_nasal-pre ratio: ', num2str(mean_unp), ' (', num2str(ratio_unp(1)), '-', num2str(ratio_unp(2)), ') p=', num2str(p_unp), ', mean = ', num2str(meanUGI_n)]);
+disp(['Total LGI-UGI_o ratio: ', num2str(mean_luo), ' (', num2str(ratio_luo(1)), '-', num2str(ratio_luo(2)), ') p=', num2str(p_luo)]);
+disp(['Total LGI-UGI_n ratio: ', num2str(mean_lun), ' (', num2str(ratio_lun(1)), '-', num2str(ratio_lun(2)), ') p=', num2str(p_lun)]);
+disp(['Total UGI_o-UGI_n ratio: ', num2str(mean_uno), ' (', num2str(ratio_uno(1)), '-', num2str(ratio_uno(2)), ') p=', num2str(p_uno)]);
+disp(['Total LGI_c-LGI_s ratio: ', num2str(mean_lcls), ' (', num2str(ratio_lcls(1)), '-', num2str(ratio_lcls(2)), ') p=', num2str(p_lcls)]);
 
 subplot(1,3,2);
 %boxplot([maxPartPre; maxPart; maxPart_diff], [maxPartPre_cat; maxPart_cat; maxPart_diffCat]);
@@ -648,6 +1235,9 @@ durations = procedureTable.procedureDuration;
 durations_LGI = durations(procedureTable.Procedure == 'lower GI');
 durations_UGI = durations(procedureTable.Procedure == 'upper GI');
 
+durations_colon = durations(procedureTable.Procedure == 'lower GI' & procedureTable.ProcedureType == 'colonoscopy');
+durations_sigmoid = durations(procedureTable.Procedure == 'lower GI' & procedureTable.ProcedureType == 'sigmoidoscopy');
+
 figure('units','normalized','outerposition',[0 0 1 1]);
 histogram(durations_LGI,20);
 hold on;
@@ -661,8 +1251,15 @@ med_duration_LGI = median(durations_LGI);
 mean_duration_UGI = mean(durations_UGI);
 med_duration_UGI = median(durations_UGI);
 
+mean_duration_colon = mean(durations_colon);
+med_duration_colon = median(durations_colon);
+mean_duration_sigmoid = mean(durations_sigmoid);
+med_duration_sigmoid = median(durations_sigmoid);
+
 disp(['UGI proc. duration: Mean: ', num2str(mean_duration_UGI), ', Med: ', num2str(med_duration_UGI), ' mins']);
 disp(['LGI proc. duration: Mean: ', num2str(mean_duration_LGI), ', Med: ', num2str(med_duration_LGI), ' mins']);
+disp(['Colonoscopy proc. duration: Mean: ', num2str(mean_duration_colon), ', Med: ', num2str(med_duration_colon), ' mins']);
+disp(['Sigmoid proc. duration: Mean: ', num2str(mean_duration_sigmoid), ', Med: ', num2str(med_duration_sigmoid), ' mins']);
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_duration_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_duration_', label, '.png']));
@@ -676,52 +1273,56 @@ temp_y = lowerGITable.procedureTot_sum;
 valid = temp_y < 4e9;
 temp_x = temp_x(valid);
 temp_y = temp_y(valid);
-[fitresult, gof, ~] = fit(temp_x,temp_y,'poly1');
-newx = linspace(min(lowerGITable.procedureDuration), max(lowerGITable.procedureDuration),100);
-yfit = feval(fitresult,newx);
 
-confidenceInt  = confint(fitresult);
-slopeconf = confidenceInt(:,1);
+if (~isempty(temp_x))
+    [fitresult, gof, ~] = fit(temp_x,temp_y,'poly1');
+    newx = linspace(min(lowerGITable.procedureDuration), max(lowerGITable.procedureDuration),100);
+    yfit = feval(fitresult,newx);
 
-if (size(lowerGITable.procedureTot_sum,1) > 2)
-    p21 = predint(fitresult,newx,0.95,'functional','off');
+    confidenceInt  = confint(fitresult);
+    slopeconf = confidenceInt(:,1);
+
+    if (size(lowerGITable.procedureTot_sum,1) > 2)
+        p21 = predint(fitresult,newx,0.95,'functional','off');
+    end
+    hold on;
+    plot(newx, yfit, 'k');
+    
+    
+    if (size(lowerGITable.procedureTot_sum,1) > 2)
+        plot(newx, p21, 'm--');
+    end
+    text(min(newx)*1.1, max(lowerGITable.procedureTot_sum)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+
+    hold off;
+    xlabel('procecure length (mins)');
+    ylabel('tot no. particles');
+    title('lower GI tot. particles v length');
 end
-hold on;
-plot(newx, yfit, 'k');
-
-if (size(lowerGITable.procedureTot_sum,1) > 2)
-    plot(newx, p21, 'm--');
-end
-text(min(newx)*1.1, max(lowerGITable.procedureTot_sum)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
-
-hold off;
-xlabel('procecure length (mins)');
-ylabel('tot no. particles');
-title('lower GI tot. particles v length');
 
 subplot(1,2,2);
-scatter(upperGITable.procedureDuration,upperGITable.procedureTot_sum);
-[fitresult, gof, ~] = fit(upperGITable.procedureDuration,upperGITable.procedureTot_sum,'poly1');
-newx = linspace(min(upperGITable.procedureDuration), max(upperGITable.procedureDuration),100);
+scatter(upperGITable_oral.procedureDuration,upperGITable_oral.procedureTot_sum);
+[fitresult, gof, ~] = fit(upperGITable_oral.procedureDuration,upperGITable_oral.procedureTot_sum,'poly1');
+newx = linspace(min(upperGITable_oral.procedureDuration), max(upperGITable_oral.procedureDuration),100);
 yfit = feval(fitresult,newx);
 
 confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
 
-if (size(upperGITable.procedureTot_sum,1) > 2)
+if (size(upperGITable_oral.procedureTot_sum,1) > 2)
     p21 = predint(fitresult,newx,0.95,'functional','off');
 end
 hold on;
 plot(newx, yfit, 'k');
 
-if (size(upperGITable.procedureTot_sum,1) > 2)
+if (size(upperGITable_oral.procedureTot_sum,1) > 2)
     plot(newx, p21, 'm--');
 end
-text(min(newx)*1.1, max(upperGITable.procedureTot_sum)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+text(min(newx)*1.1, max(upperGITable_oral.procedureTot_sum)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
 hold off;
 xlabel('procecure length (mins)');
 ylabel('tot no. particles');
-title('upper GI tot. particles v length');
+title('upper GI oral tot. particles v length');
 
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_durTrend_', label, '.fig']));
@@ -749,9 +1350,11 @@ ci_lm = exp(ci_lm);
 ci_lh = exp(ci_lh);
 ci_mh = exp(ci_mh);
 
-text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
-text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
-text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+    text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
+    text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_analtone_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_analtone_', label, '.png']));
@@ -790,7 +1393,9 @@ ylabel('duration (mins)');
 [~, p_sed, ci_sed] = ttest2(log(sedDuration(sedation == 'midazolam')), log(sedDuration(sedation == 'entonox')));
 ci_sed = exp(ci_sed);
 
-text(1.0, max(sedDuration)*0.8,['midazolam-entonox: ', num2str(sqrt(ci_sed(1)*ci_sed(2))), ' (', num2str(ci_sed(1)), '-', num2str(ci_sed(2)), ') p = ', num2str(p_sed)]);
+if (~isempty(sedDuration))
+    text(1.0, max(sedDuration)*0.8,['midazolam-entonox: ', num2str(sqrt(ci_sed(1)*ci_sed(2))), ' (', num2str(ci_sed(1)), '-', num2str(ci_sed(2)), ') p = ', num2str(p_sed)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_seddurlgi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_seddurlgi_', label, '.png']));
@@ -828,7 +1433,9 @@ ylabel('max no particles /m^3/s');
 [~, p_mf, ci_mf] = ttest2(log(maxPart(sex == 'male')), log(maxPart(sex == 'female')));
 ci_mf = 1./exp(ci_mf);
 
-text(1.0, max(maxPart)*0.8,['Male-female: ', num2str(sqrt(ci_mf(1)*ci_mf(2))), ' (', num2str(ci_mf(1)), '-', num2str(ci_mf(2)), ') p = ', num2str(p_mf)]);
+if ~isempty(maxPart)
+    text(1.0, max(maxPart)*0.8,['Male-female: ', num2str(sqrt(ci_mf(1)*ci_mf(2))), ' (', num2str(ci_mf(1)), '-', num2str(ci_mf(2)), ') p = ', num2str(p_mf)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_sexlgi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_sexlgi_', label, '.png']));
@@ -847,7 +1454,15 @@ ylabel('max no particles /m^3/s');
 [~, p_mn, ci_mn] = ttest2(log(maxPart(sedation == 'midazolam')), log(maxPart(sedation == 'none')));
 ci_mn = exp(ci_mn);
 
+[~, p_tsn, ci_tsn] = ttest2(log(maxPart(sedation == 'throat spray')), log(maxPart(sedation == 'none')));
+ci_tsn = exp(ci_tsn);
+
+[~, p_mts, ci_mts] = ttest2(log(maxPart(sedation == 'midazolam')), log(maxPart(sedation == 'throat spray')));
+ci_mts = exp(ci_mts);
+
 text(1.0, max(maxPart)*0.8,['Midaz-none: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+text(1.0, max(maxPart)*0.6,['TS-none: ', num2str(sqrt(ci_tsn(1)*ci_tsn(2))), ' (', num2str(ci_tsn(1)), '-', num2str(ci_tsn(2)), ') p = ', num2str(p_tsn)]);
+text(1.0, max(maxPart)*0.4,['Midaz-TS: ', num2str(sqrt(ci_mts(1)*ci_mts(2))), ' (', num2str(ci_mts(1)), '-', num2str(ci_mts(2)), ') p = ', num2str(p_mts)]);
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_sedugi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_sedugi_', label, '.png']));
@@ -866,7 +1481,9 @@ ylabel('max no particles /m^3/s');
 
 ci_mn = exp(ci_mn);
 
-text(1.0, max(maxPart)*0.8,['Midaz-entonox: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Midaz-entonox: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_sedlgi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_sedlgi_', label, '.png']));
@@ -882,13 +1499,63 @@ violinplot(maxPart, masked);
 title('Max particles vs. mask');
 ylabel('max no particles /m^3/s');
 
-[~, p_mn, ci_mn] = ttest2(log(maxPart(masked == 'yes')), log(maxPart(masked == 'no')));
-ci_mn = exp(ci_mn);
+[~, p_sb, ci_sb] = ttest2(log(maxPart(masked == 'surgical')), log(maxPart(masked == 'bronchoscopy')));
+ci_sb = exp(ci_sb);
+[~, p_sn, ci_sn] = ttest2(log(maxPart(masked == 'surgical')), log(maxPart(masked == 'no')));
+ci_sn = exp(ci_sn);
+[~, p_bn, ci_bn] = ttest2(log(maxPart(masked == 'bronchoscopy')), log(maxPart(masked == 'no')));
+ci_bn = exp(ci_bn);
 
-text(1.0, max(maxPart)*0.8,['Mask-nonmasked: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+text(1.0, max(maxPart)*0.8,['Surgical-bronchoscopy: ', num2str(sqrt(ci_sb(1)*ci_sb(2))), ' (', num2str(ci_sb(1)), '-', num2str(ci_sb(2)), ') p = ', num2str(p_sb)]);
+text(1.0, max(maxPart)*0.6,['Surgical-nonmasked: ', num2str(sqrt(ci_sn(1)*ci_sn(2))), ' (', num2str(ci_sn(1)), '-', num2str(ci_sn(2)), ') p = ', num2str(p_sn)]);
+text(1.0, max(maxPart)*0.4,['Bronchoscopy-nonmasked: ', num2str(sqrt(ci_bn(1)*ci_bn(2))), ' (', num2str(ci_bn(1)), '-', num2str(ci_bn(2)), ') p = ', num2str(p_bn)]);
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_maskedugi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_maskedugi_', label, '.png']));
+
+%% RoomType
+figure('units','normalized','outerposition',[0 0 1 1]);
+roomType = procedureTable.RoomType;
+maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
+
+roomType = roomType(procedureTable.Procedure == 'upper GI' & procedureTable.UGIroute == 'oral');
+maxPart = maxPart(procedureTable.Procedure == 'upper GI' & procedureTable.UGIroute == 'oral');
+violinplot(maxPart, roomType);
+title('Max particles vs. room type');
+ylabel('max no particles /m^3/s');
+
+endoData = maxPart(roomType == 'endoscopy');
+lfData = maxPart(roomType == 'laminar flow');
+asData = maxPart(roomType == 'endo+airsentry');
+
+endo_mean = mean(log(endoData));
+endo_std = std(log(endoData));
+
+lfData_mean = mean(log(lfData));
+asData_mean = mean(log(asData));
+
+n_lf = sampsizepwr('t',[endo_mean, endo_std],lfData_mean);
+pwrout_lft = sampsizepwr('t',[endo_mean, endo_std],lfData_mean,[],size(lfData,1));
+disp(['To test laminar flow, with power 0.9, p=0.05 needs ', num2str(n_lf), '. Power with n=', num2str(size(lfData,1)), ' is ', num2str(pwrout_lft)]);
+
+
+n_as = sampsizepwr('t',[endo_mean, endo_std],asData_mean);
+pwrout_as = sampsizepwr('t',[endo_mean, endo_std],asData_mean,[],size(asData,1));
+disp(['To test AS, with power 0.9, p=0.05 needs ', num2str(n_as), '. Power with n=', num2str(size(asData,1)), ' is ', num2str(pwrout_as)]);
+
+[~, p_el, ci_el] = ttest2(log(maxPart(roomType == 'endoscopy')), log(maxPart(roomType == 'laminar flow')));
+ci_el = exp(ci_el);
+[~, p_ea, ci_ea] = ttest2(log(maxPart(roomType == 'endoscopy')), log(maxPart(roomType == 'endo+airsentry')));
+ci_ea = exp(ci_ea);
+[~, p_eal, ci_eal] = ttest2(log(maxPart(roomType == 'endo+airsentry')), log(maxPart(roomType == 'laminar flow')));
+ci_eal = exp(ci_eal);
+
+text(1.0, max(maxPart)*0.8,['Endo-laminar: ', num2str(sqrt(ci_el(1)*ci_el(2))), ' (', num2str(ci_el(1)), '-', num2str(ci_el(2)), ') p = ', num2str(p_el)]);
+text(1.0, max(maxPart)*0.6,['Endo-endo-sent: ', num2str(sqrt(ci_ea(1)*ci_ea(2))), ' (', num2str(ci_ea(1)), '-', num2str(ci_ea(2)), ') p = ', num2str(p_ea)]);
+text(1.0, max(maxPart)*0.4,['Endo-sent-laminar: ', num2str(sqrt(ci_eal(1)*ci_eal(2))), ' (', num2str(ci_eal(1)), '-', num2str(ci_eal(2)), ') p = ', num2str(p_eal)]);
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_laminarugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_laminarugi_', label, '.png']));
 
 %% Smoker
 figure('units','normalized','outerposition',[0 0 1 1]);
@@ -923,7 +1590,9 @@ ylabel('max no particles /m^3/s');
 [~, p_mn, ci_mn] = ttest2(log(maxPart(smoker == 'yes')), log(maxPart(smoker == 'no')));
 
 ci_mn = exp(ci_mn);
-text(1.0, max(maxPart)*0.8,['Smoker-nonsmoker: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+if ~isempty(maxPart)
+    text(1.0, max(maxPart)*0.8,['Smoker-nonsmoker: ', num2str(sqrt(ci_mn(1)*ci_mn(2))), ' (', num2str(ci_mn(1)), '-', num2str(ci_mn(2)), ') p = ', num2str(p_mn)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_smokerlgi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_smokerlgi_', label, '.png']));
@@ -973,10 +1642,11 @@ ci_lm = exp(ci_lm);
 ci_lh = exp(ci_lh);
 ci_mh = exp(ci_mh);
 
-
-text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
-text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
-text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Low-Medium: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+    text(1.0, max(maxPart)*0.6,['Low-High: ', num2str(sqrt(ci_lh(1)*ci_lh(2))), ' (', num2str(ci_lh(1)), '-', num2str(ci_lh(2)), ') p = ', num2str(p_lh)]);
+    text(1.0, max(maxPart)*0.4,['Medium-High: ', num2str(sqrt(ci_mh(1)*ci_mh(2))), ' (', num2str(ci_mh(1)), '-', num2str(ci_mh(2)), ') p = ', num2str(p_mh)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_discomfortlgi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_discomfortlgi_', label, '.png']));
@@ -994,7 +1664,9 @@ ylabel('max no particles /m^3/s');
 [~, p_lm, ci_lm] = ttest2(log(maxPart(CO2 == 'CO2')), log(maxPart(CO2 == 'Water')));
 
 ci_lm = exp(ci_lm);
-text(1.0, max(maxPart)*0.8,['CO2-water: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['CO2-water: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_co2_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_co2_', label, '.png']));
@@ -1012,7 +1684,9 @@ ylabel('max no particles /m^3/s');
 [~, p_lm, ci_lm] = ttest2(log(maxPart(hyst == 'yes')), log(maxPart(hyst == 'no')));
 
 ci_lm = 1./exp(ci_lm);
-text(1.0, max(maxPart)*0.8,['Yes-No: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Yes-No: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_hyst_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_hyst_', label, '.png']));
@@ -1028,30 +1702,93 @@ title('Max particles vs. UGI route');
 ylabel('max no particles /m^3/s');
 
 [~, p_lm, ci_lm] = ttest2(log(maxPart(ugiroute == 'nasal')), log(maxPart(ugiroute == 'oral')));
-
 ci_lm = exp(ci_lm);
-text(1.0, max(maxPart)*0.8,['Nasal-Oral: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Nasal-Oral: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+end
 
+[~, p_lm, ci_lm] = ttest2(log(maxPart(ugiroute == 'nasal' | ugiroute == 'nasal abandoned')), log(maxPart(ugiroute == 'oral')));
+ci_lm = exp(ci_lm);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.6,['Nasal (all) -Oral: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+end
 saveas(gcf,fullfile(resultsFolder,['fullproc_ugiroute_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_ugiroute_', label, '.png']));
-%% Hernia
+%% UGI procedureType
 figure('units','normalized','outerposition',[0 0 1 1]);
-hiatus = procedureTable.HiatusHernia;
+procedureType = procedureTable.ProcedureType;
 maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
 
-hiatus = hiatus(procedureTable.Procedure == 'upper GI');
+procedureType = procedureType(procedureTable.Procedure == 'upper GI');
 maxPart = maxPart(procedureTable.Procedure == 'upper GI');
+violinplot(maxPart, procedureType);
+title('Max particles vs. procedureType');
+ylabel('max no particles /m^3/s');
+
+[~, p_gs, ci_gs] = ttest2(log(maxPart(procedureType == 'gastroscopy')), log(maxPart(procedureType == 'cytosponge')));
+ci_gs = exp(ci_gs);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Gastroscopy-cytosponge: ', num2str(sqrt(ci_gs(1)*ci_gs(2))), ' (', num2str(ci_gs(1)), '-', num2str(ci_gs(2)), ') p = ', num2str(p_gs)]);
+end
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_proctype_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_proctype_', label, '.png']));
+
+coughCount = upperGITable.CoughEvents;
+coughCount = coughCount./ upperGITable.procedureDuration*20;
+coughCount_c = coughCount(procedureType == 'cytosponge');
+
+if ~cytospongeOnly
+    if ~isempty(coughCount_c) && ~isempty(coughCount)
+        pd_c = fitdist(coughCount_c, 'Poisson');
+        coughCount_g = coughCount(procedureType == 'gastroscopy');
+        pd_g = fitdist(coughCount_g, 'Poisson');
+
+        objFun2 = @(x) objFun(x,pd_c, pd_g);
+        pVal = fmincon(objFun2,0.05,[],[],[],[],[1e-6],[0.99999]);
+
+        disp(['Cough count p val (cyto v. ogd): ', num2str(pVal), ',  ratio = ', num2str(mean(pd_c)/mean(pd_g))]);
+    end
+end
+
+%% Hernia
+figure('units','normalized','outerposition',[0 0 1 1]);
+hiatus = upperGITable.HiatusHernia;
+maxPart = upperGITable.procedureTot_sum ./ upperGITable.procedureDuration * 20;
+
 violinplot(maxPart, hiatus);
 title('Max particles vs. hiatus');
 ylabel('max no particles /m^3/s');
 
-[~, p_lm, ci_lm] = ttest2(log(maxPart(hiatus == 'yes')), log(maxPart(hiatus == 'unknown')));
+[~, p_lm, ci_lm] = ttest2(log(maxPart(hiatus == 'yes')), log(maxPart(hiatus == 'no')));
 
 ci_lm = exp(ci_lm);
-text(1.0, max(maxPart)*0.8,['Yes-No: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Yes-No: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_hernia_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_hernia_', label, '.png']));
+
+coughCount = upperGITable.CoughEvents;
+coughCount = coughCount./ upperGITable.procedureDuration*20;
+coughCount_h = coughCount(hiatus == 'yes');
+
+if ~isempty(coughCount_h) && ~isempty(coughCount)
+    pd_h = fitdist(coughCount_h, 'Poisson');
+    coughCount_nh = coughCount(hiatus == 'no');
+    pd_nh = fitdist(coughCount_nh, 'Poisson');
+
+    objFun2 = @(x) objFun(x,pd_h, pd_nh);
+    pVal = fmincon(objFun2,0.05,[],[],[],[],[1e-6],[0.99999]);
+
+    disp(['Cough count p val (hiatus v. non hiatus): ', num2str(pVal), ',  ratio = ', num2str(mean(pd_h)/mean(pd_nh))]);
+end
+
+
+
+
+
 %% Suctioning
 figure('units','normalized','outerposition',[0 0 1 1]);
 suctioning = procedureTable.Suctioning;
@@ -1066,8 +1803,10 @@ ylabel('max no particles /m^3/s');
 [~, p_lm, ci_lm] = ttest2(log(maxPart(suctioning == 'yes')), log(maxPart(suctioning == 'unknown')));
 
 ci_lm = exp(ci_lm);
-text(1.0, max(maxPart)*0.8,['Yes-no: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
 
+if (~isempty(maxPart))
+    text(1.0, max(maxPart)*0.8,['Yes-no: ', num2str(sqrt(ci_lm(1)*ci_lm(2))), ' (', num2str(ci_lm(1)), '-', num2str(ci_lm(2)), ') p = ', num2str(p_lm)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_suctioning_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_suctioning_', label, '.png']));
@@ -1100,7 +1839,9 @@ title('age upper GI');
 
 confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
-text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+if (~isempty(maxPart))
+    text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_ageugi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_ageugi_', label, '.png']));
@@ -1111,32 +1852,35 @@ maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 
 age = age(procedureTable.Procedure == 'lower GI');
 maxPart = maxPart(procedureTable.Procedure == 'lower GI');
 
-scatter(age, maxPart);
-[fitresult, gof, ~] = fit(age(:),maxPart(:),'poly1');
-newx = linspace(min(age), max(age),100);
-yfit = feval(fitresult,newx);
+if (~isempty(maxPart))
+    scatter(age, maxPart);
+    [fitresult, gof, ~] = fit(age(:),maxPart(:),'poly1');
+    newx = linspace(min(age), max(age),100);
+    yfit = feval(fitresult,newx);
 
-if (size(maxPart,1) > 2)
-    p21 = predint(fitresult,newx,0.95,'functional','off');
+    if (size(maxPart,1) > 2)
+        p21 = predint(fitresult,newx,0.95,'functional','off');
+    end
+    hold on;
+    plot(newx, yfit, 'k');
+
+    if (size(maxPart,1) > 2)
+        plot(newx, p21, 'm--');
+    end
+    %text(min(newx)*1.1, max(maxPart)*0.8,['r = ', num2str(gof.rsquare)]);
+    hold off;
+    xlabel('age');
+    ylabel('max no. particles');
+    title('age lower GI');
+
+    confidenceInt  = confint(fitresult);
+    slopeconf = confidenceInt(:,1);
+    if (~isempty(maxPart))
+        text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+    end
+    saveas(gcf,fullfile(resultsFolder,['fullproc_agelgi_', label, '.fig']));
+    saveas(gcf,fullfile(resultsFolder,['fullproc_agelgi_', label, '.png']));
 end
-hold on;
-plot(newx, yfit, 'k');
-
-if (size(maxPart,1) > 2)
-    plot(newx, p21, 'm--');
-end
-%text(min(newx)*1.1, max(maxPart)*0.8,['r = ', num2str(gof.rsquare)]);
-hold off;
-xlabel('age');
-ylabel('max no. particles');
-title('age lower GI');
-
-confidenceInt  = confint(fitresult);
-slopeconf = confidenceInt(:,1);
-text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
-
-saveas(gcf,fullfile(resultsFolder,['fullproc_agelgi_', label, '.fig']));
-saveas(gcf,fullfile(resultsFolder,['fullproc_agelgi_', label, '.png']));
 
 %% BMI
 figure('units','normalized','outerposition',[0 0 1 1]);
@@ -1171,7 +1915,9 @@ title('BMI upper GI');
 
 confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
-text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+if (~isempty(maxPart))
+    text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+end
 
 saveas(gcf,fullfile(resultsFolder,['fullproc_bmiugi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_bmiugi_', label, '.png']));
@@ -1182,13 +1928,55 @@ maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 
 BMI = BMI(procedureTable.Procedure == 'lower GI');
 maxPart = maxPart(procedureTable.Procedure == 'lower GI');
 
-val = ~isnan(BMI);
-BMI = BMI(val);
+if ~isempty(BMI)
+    val = ~isnan(BMI);
+    BMI = BMI(val);
+    maxPart = maxPart(val);
+
+    scatter(BMI, maxPart);
+    [fitresult, gof, ~] = fit(BMI(:),maxPart(:),'poly1');
+    newx = linspace(min(BMI), max(BMI),100);
+    yfit = feval(fitresult,newx);
+
+    if (size(maxPart,1) > 2)
+        p21 = predint(fitresult,newx,0.95,'functional','off');
+    end
+    hold on;
+    plot(newx, yfit, 'k');
+
+    if (size(maxPart,1) > 2)
+        plot(newx, p21, 'm--');
+    end
+    %text(min(newx)*1.1, max(maxPart)*0.8,['r = ', num2str(gof.rsquare)]);
+    hold off;
+    xlabel('BMI');
+    ylabel('max no. particles');
+    title('BMI lower GI');
+    a = 1;
+
+    confidenceInt  = confint(fitresult);
+    slopeconf = confidenceInt(:,1);
+    if (~isempty(maxPart))
+        text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+    end
+    saveas(gcf,fullfile(resultsFolder,['fullproc_bmilgi_', label, '.fig']));
+    saveas(gcf,fullfile(resultsFolder,['fullproc_bmilgi_', label, '.png']));
+end
+
+%% BMI years
+figure('units','normalized','outerposition',[0 0 1 1]);
+BMIyears = procedureTable.BMIyears;
+maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
+BMIyears = BMIyears(procedureTable.Procedure == 'upper GI');
+maxPart = maxPart(procedureTable.Procedure == 'upper GI');
+
+val = ~isnan(BMIyears);
+BMIyears = BMIyears(val);
 maxPart = maxPart(val);
 
-scatter(BMI, maxPart);
-[fitresult, gof, ~] = fit(BMI(:),maxPart(:),'poly1');
-newx = linspace(min(BMI), max(BMI),100);
+scatter(BMIyears, maxPart);
+[fitresult, gof, ~] = fit(BMIyears(:),maxPart(:),'poly1');
+newx = linspace(min(BMIyears), max(BMIyears),100);
 yfit = feval(fitresult,newx);
 
 if (size(maxPart,1) > 2)
@@ -1202,17 +1990,60 @@ if (size(maxPart,1) > 2)
 end
 %text(min(newx)*1.1, max(maxPart)*0.8,['r = ', num2str(gof.rsquare)]);
 hold off;
-xlabel('BMI');
+xlabel('BMIyears');
 ylabel('max no. particles');
-title('BMI lower GI');
-a = 1;
+title('BMIyears upper GI');
 
 confidenceInt  = confint(fitresult);
 slopeconf = confidenceInt(:,1);
-text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+if (~isempty(maxPart))
+    text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+end
 
-saveas(gcf,fullfile(resultsFolder,['fullproc_bmilgi_', label, '.fig']));
-saveas(gcf,fullfile(resultsFolder,['fullproc_bmilgi_', label, '.png']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_BMIyearsugi_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_BMIyearsugi_', label, '.png']));
+
+figure('units','normalized','outerposition',[0 0 1 1]);
+BMIyears = procedureTable.BMIyears;
+maxPart = procedureTable.procedureTot_sum ./ procedureTable.procedureDuration * 20;
+BMIyears = BMIyears(procedureTable.Procedure == 'lower GI');
+maxPart = maxPart(procedureTable.Procedure == 'lower GI');
+
+if ~isempty(BMIyears)
+    val = ~isnan(BMIyears);
+    BMIyears = BMIyears(val);
+    maxPart = maxPart(val);
+
+    scatter(BMIyears, maxPart);
+    [fitresult, gof, ~] = fit(BMIyears(:),maxPart(:),'poly1');
+    newx = linspace(min(BMIyears), max(BMIyears),100);
+    yfit = feval(fitresult,newx);
+
+    if (size(maxPart,1) > 2)
+        p21 = predint(fitresult,newx,0.95,'functional','off');
+    end
+    hold on;
+    plot(newx, yfit, 'k');
+
+    if (size(maxPart,1) > 2)
+        plot(newx, p21, 'm--');
+    end
+    %text(min(newx)*1.1, max(maxPart)*0.8,['r = ', num2str(gof.rsquare)]);
+    hold off;
+    xlabel('BMIyears');
+    ylabel('max no. particles');
+    title('BMIyears lower GI');
+    a = 1;
+
+    confidenceInt  = confint(fitresult);
+    slopeconf = confidenceInt(:,1);
+    if (~isempty(maxPart))
+        text(min(newx)*1.1, max(maxPart)*0.8,['y = ', num2str(fitresult.p1), '(', num2str(min(slopeconf)), ' - ', num2str(max(slopeconf)), ')x + ', num2str(fitresult.p2), ', r = ', num2str(gof.rsquare)]);
+    end
+
+    saveas(gcf,fullfile(resultsFolder,['fullproc_BMIyearslgi_', label, '.fig']));
+    saveas(gcf,fullfile(resultsFolder,['fullproc_BMIyearslgi_', label, '.png']));
+end
 
 %% Interprocedure
 usesAirSentry = interProcedureTable.AirSentryUsed;
@@ -1299,7 +2130,10 @@ ylabel('No. particles');
 saveas(gcf,fullfile(resultsFolder,['fullproc_interproctot_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_interproctot_', label, '.png']));
 
-% Now compute slopes
+%% Now compute slopes (upper+lower)
+medianDuration = median(interProcedureTable.procedureDuration);
+iqrDuration = iqr(interProcedureTable.procedureDuration);
+disp(['Preceeding procedure (upper+lower) has median = ', num2str(medianDuration), ' and IQR = ', num2str(iqrDuration)]);
 slopes = interProcedureTable.slopes;
 lengths = interProcedureTable.lengths;
 slopes_nosent = slopes(~interProcedureTable.AirSentryUsed);
@@ -1327,9 +2161,11 @@ subplot(1,3,1)
 histogram(slopes_nosent_f,50);
 nosent_mean = sum(lengths_nosent/sum(lengths_nosent) .* slopes_nosent);
 sent_mean = sum(lengths_sent/sum(lengths_sent) .* slopes_sent);
+nosent_med = median(slopes_nosent);
+sent_med = median(slopes_sent);
 xlabel('slope');
 ylabel('frequency');
-title(['slopes w/o and w airsentry (means = ', num2str(nosent_mean), ', ', num2str(sent_mean), ')']);
+title(['slopes w/o and w airsentry (upper and lower) (medians = ', num2str(nosent_med), ', ', num2str(sent_med), ')']);
 
 hold on;
 histogram(slopes_sent_f,20);
@@ -1345,36 +2181,313 @@ cats = categorical(cats,[0,1], {'no airsentry', 'airsentry'});
 boxplot([slopes_nosent; slopes_sent], cats);
 ylabel('Decay constant (s^{-1})');
 
-pval_f = 0;
-for k=1:1000
-    temp_nosent = datasample(slopes_nosent,size(slopes_nosent,1),'Weights',lengths_nosent);
-    temp_sent = datasample(slopes_sent,size(slopes_sent,1)*2,'Weights',lengths_sent);
+% Compute confidence interval
+if (~isempty(slopes_sent))
+    pval_f = 0;
+    ci_f = [];
+    h_cum = 0;
+    for k=1:1000
+        temp_nosent = datasample(slopes_nosent,size(slopes_nosent,1),'Weights',lengths_nosent);
+        temp_sent = datasample(slopes_sent,size(slopes_sent,1)*2,'Weights',lengths_sent);
 
-    [h,pval_temp, ci_temp] = ttest2(temp_nosent, temp_sent, 'tail', 'both');
+        %[h,pval_temp, ci_temp] = ttest2(temp_nosent, temp_sent, 'tail', 'both');
+        %[h,pval_temp, ci_temp] = kstest2(temp_nosent, temp_sent, 'Tail', 'unequal'); %Since they are highly non-normal (anderson-darling test) 
+        [pval_temp, h, ci_temp] = ranksum(temp_nosent, temp_sent, 'tail', 'right'); %Since they are highly non-normal (anderson-darling test)
+        ci_temp = [0,0];
+
+        pval_f = pval_f + pval_temp;
+
+        if isempty(ci_f)
+            ci_f = ci_temp;
+        else
+            ci_f = ci_f + ci_temp;
+        end
+        
+        h_cum = h_cum+h;
+    end
+    pval_f = pval_f/1000;
+    ci_f = ci_f/1000;
+    h_cum = h_cum/1000;
     
-    pval_f = pval_f + pval_temp;
+    disp(['Study power for slope method: ', num2str(h_cum)]);
 end
-pval_f = pval_f/1000;
 
-[h,pval, ci] = ttest2(slopes_nosent, slopes_sent, 'tail', 'both');
-
-partLevel = 0.42;
+partLevel = 0.5;
 t_95_nosent = log(partLevel)./slopes_nosent_f/60;
 t_95_sent = log(partLevel)./slopes_sent_f/60;
 
-t_95_nosent_mean = log(partLevel)/nosent_mean/60;
-t_95_sent_mean = log(partLevel)/sent_mean/60;
-t_95_sent_mean_lb = log(partLevel)/(nosent_mean - ci(1))/60;
-t_95_sent_mean_ub = log(partLevel)/(nosent_mean - ci(2))/60;
+t_95_nosent_med = log(partLevel)/nosent_med/60;
+t_95_sent_med = log(partLevel)/sent_med/60;
+%t_95_sent_mean_lb = log(partLevel)/(nosent_mean - ci_f(1))/60;
+%t_95_sent_mean_ub = log(partLevel)/(nosent_mean - ci_f(2))/60;
+
+%ub2 = (nosent_mean - ci_f(1))/nosent_mean;
+m2 = (sent_med)/nosent_med;
+%lb2 = (nosent_mean - ci_f(2))/nosent_mean;
+
+
 
 subplot(1,3,3);
-histogram(t_95_nosent, 100);
+cats = [zeros(size(t_95_nosent,1),1);ones(size(t_95_sent,1),1)];
+cats = categorical(cats,[0,1], {'no airsentry', 'airsentry'});
+boxplot([t_95_nosent; t_95_sent],cats);
+ylabel('minutes');
+title('time taken to reach 50%');
+ylim([0,120]);
+if (~isempty(slopes_sent))
+    text(0,110,['p=',num2str(pval_f), ', med ratio=', num2str(m2), 't_{nosent}=', num2str(t_95_nosent_med), 'mins, t_{sent}=', num2str(t_95_sent_med), 'mins']);
+    text(0,100,['n_{proc}=', num2str(nnz(usesAirSentry)), '/', num2str(nnz(~usesAirSentry)), ':  ', num2str(numel(lengths_sent)), '/', num2str(numel(lengths_nosent))]);
+else
+    text(0,110,['t_{nosent}=', num2str(t_95_nosent_med), 'mins, t_{sent}=', num2str(t_95_sent_med), 'mins']);
+end
+    
+%histogram(t_95_nosent, 100);
+%hold on;
+%histogram(t_95_sent, 50);
+%hold off;
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_upper+lower_', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_upper+lower', label, '.png']));
+
+%%
+%% Now compute slopes (lower)
+interProcedureTable_lower = interProcedureTable(interProcedureTable.Procedure == 'lower GI',:);
+usesAirSentry = interProcedureTable_lower.AirSentryUsed;
+medianDuration = median(interProcedureTable_lower.procedureDuration);
+iqrDuration = iqr(interProcedureTable_lower.procedureDuration);
+disp(['Preceeding procedure (lower) has median = ', num2str(medianDuration), ' and IQR = ', num2str(iqrDuration)]);
+slopes = interProcedureTable_lower.slopes;
+lengths = interProcedureTable_lower.lengths;
+slopes_nosent = slopes(~interProcedureTable_lower.AirSentryUsed);
+lengths_nosent = lengths(~interProcedureTable_lower.AirSentryUsed);
+slopes_nosent = vertcat(slopes_nosent{:});
+lengths_nosent = vertcat(lengths_nosent{:});
+
+slopes_nosent_f = [];
+for k=1:size(slopes_nosent,1)
+    slopes_nosent_f = [slopes_nosent_f; ones(lengths_nosent(k),1)*slopes_nosent(k)];
+end
+
+slopes_sent = slopes(interProcedureTable_lower.AirSentryUsed);
+lengths_sent = lengths(interProcedureTable_lower.AirSentryUsed);
+slopes_sent = vertcat(slopes_sent{:});
+lengths_sent = vertcat(lengths_sent{:});
+
+slopes_sent_f = [];
+for k=1:size(slopes_sent,1)
+    slopes_sent_f = [slopes_sent_f; ones(lengths_sent(k),1)*slopes_sent(k)];
+end
+
+figure('units','normalized','outerposition',[0 0 1 1]);
+subplot(1,3,1)
+histogram(slopes_nosent_f,50);
+nosent_mean = sum(lengths_nosent/sum(lengths_nosent) .* slopes_nosent);
+sent_mean = sum(lengths_sent/sum(lengths_sent) .* slopes_sent);
+nosent_med = median(slopes_nosent);
+sent_med = median(slopes_sent);
+xlabel('slope');
+ylabel('frequency');
+title(['slopes w/o and w airsentry (lower) (medians = ', num2str(nosent_med), ', ', num2str(sent_med), ')']);
+
 hold on;
-histogram(t_95_sent, 50);
+histogram(slopes_sent_f,20);
+
+%xlabel('slope');
+%ylabel('frequency');
+%title(['slopes with airsentry (mean = ', num2str(sent_mean)]);
 hold off;
 
-saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_', label, '.fig']));
-saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_', label, '.png']));
+subplot(1,3,2);
+cats = [zeros(size(slopes_nosent,1),1);ones(size(slopes_sent,1),1)];
+cats = categorical(cats,[0,1], {'no airsentry', 'airsentry'});
+boxplot([slopes_nosent; slopes_sent], cats);
+ylabel('Decay constant (s^{-1})');
+
+% Compute confidence interval
+if (~isempty(slopes_sent))
+    pval_f = 0;
+    ci_f = [];
+    for k=1:1000
+        temp_nosent = datasample(slopes_nosent,size(slopes_nosent,1),'Weights',lengths_nosent);
+        temp_sent = datasample(slopes_sent,size(slopes_sent,1)*2,'Weights',lengths_sent);
+
+        %[h,pval_temp, ci_temp] = ttest2(temp_nosent, temp_sent, 'tail', 'both');
+        %[h,pval_temp, ci_temp] = kstest2(temp_nosent, temp_sent, 'Tail', 'unequal'); %Since they are highly non-normal (anderson-darling test) 
+        [pval_temp, h, ci_temp] = ranksum(temp_nosent, temp_sent, 'tail', 'right'); %Since they are highly non-normal (anderson-darling test)
+        ci_temp = [0,0];
+
+        pval_f = pval_f + pval_temp;
+
+        if isempty(ci_f)
+            ci_f = ci_temp;
+        else
+            ci_f = ci_f + ci_temp;
+        end
+    end
+    pval_f = pval_f/1000;
+    ci_f = ci_f/1000;
+
+
+
+    [h,pval, ci] = ttest2(slopes_nosent, slopes_sent, 'tail', 'both');
+end
+
+partLevel = 0.5;
+t_95_nosent = log(partLevel)./slopes_nosent_f/60;
+t_95_sent = log(partLevel)./slopes_sent_f/60;
+
+t_95_nosent_med = log(partLevel)/nosent_med/60;
+t_95_sent_med = log(partLevel)/sent_med/60;
+%t_95_sent_mean_lb = log(partLevel)/(nosent_mean - ci_f(1))/60;
+%t_95_sent_mean_ub = log(partLevel)/(nosent_mean - ci_f(2))/60;
+
+%ub2 = (nosent_mean - ci_f(1))/nosent_mean;
+m2 = (sent_med)/nosent_med;
+%lb2 = (nosent_mean - ci_f(2))/nosent_mean;
+
+
+
+subplot(1,3,3);
+cats = [zeros(size(t_95_nosent,1),1);ones(size(t_95_sent,1),1)];
+cats = categorical(cats,[0,1], {'no airsentry', 'airsentry'});
+boxplot([t_95_nosent; t_95_sent],cats);
+ylabel('minutes');
+title('time taken to reach 50%');
+ylim([0,120]);
+if (~isempty(slopes_sent))
+    text(0,110,['p=',num2str(pval_f), ', med ratio=', num2str(m2), 't_{nosent}=', num2str(t_95_nosent_med), 'mins, t_{sent}=', num2str(t_95_sent_med), 'mins']);
+    text(0,100,['n_{proc}=', num2str(nnz(usesAirSentry)), '/', num2str(nnz(~usesAirSentry)), ':  ', num2str(numel(lengths_sent)), '/', num2str(numel(lengths_nosent))]);
+else
+    text(0,110,['t_{nosent}=', num2str(t_95_nosent_med), 'mins, t_{sent}=', num2str(t_95_sent_med), 'mins']);
+end
+    
+%histogram(t_95_nosent, 100);
+%hold on;
+%histogram(t_95_sent, 50);
+%hold off;
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_lower', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_lower', label, '.png']));
+%%
+%% Now compute slopes (upper)
+interProcedureTable_upper = interProcedureTable(interProcedureTable.Procedure == 'upper GI',:);
+usesAirSentry = interProcedureTable_upper.AirSentryUsed;
+medianDuration = median(interProcedureTable_upper.procedureDuration);
+iqrDuration = iqr(interProcedureTable_upper.procedureDuration);
+disp(['Preceeding procedure (upper) has median = ', num2str(medianDuration), ' and IQR = ', num2str(iqrDuration)]);
+slopes = interProcedureTable.slopes;
+lengths = interProcedureTable.lengths;
+slopes_nosent = slopes(~interProcedureTable.AirSentryUsed);
+lengths_nosent = lengths(~interProcedureTable.AirSentryUsed);
+slopes_nosent = vertcat(slopes_nosent{:});
+lengths_nosent = vertcat(lengths_nosent{:});
+
+slopes_nosent_f = [];
+for k=1:size(slopes_nosent,1)
+    slopes_nosent_f = [slopes_nosent_f; ones(lengths_nosent(k),1)*slopes_nosent(k)];
+end
+
+slopes_sent = slopes(interProcedureTable.AirSentryUsed);
+lengths_sent = lengths(interProcedureTable.AirSentryUsed);
+slopes_sent = vertcat(slopes_sent{:});
+lengths_sent = vertcat(lengths_sent{:});
+
+slopes_sent_f = [];
+for k=1:size(slopes_sent,1)
+    slopes_sent_f = [slopes_sent_f; ones(lengths_sent(k),1)*slopes_sent(k)];
+end
+
+figure('units','normalized','outerposition',[0 0 1 1]);
+subplot(1,3,1)
+histogram(slopes_nosent_f,50);
+nosent_mean = sum(lengths_nosent/sum(lengths_nosent) .* slopes_nosent);
+sent_mean = sum(lengths_sent/sum(lengths_sent) .* slopes_sent);
+nosent_med = median(slopes_nosent);
+sent_med = median(slopes_sent);
+xlabel('slope');
+ylabel('frequency');
+title(['slopes w/o and w airsentry (upper) (medians = ', num2str(nosent_med), ', ', num2str(sent_med), ')']);
+
+hold on;
+histogram(slopes_sent_f,20);
+
+%xlabel('slope');
+%ylabel('frequency');
+%title(['slopes with airsentry (mean = ', num2str(sent_mean)]);
+hold off;
+
+subplot(1,3,2);
+cats = [zeros(size(slopes_nosent,1),1);ones(size(slopes_sent,1),1)];
+cats = categorical(cats,[0,1], {'no airsentry', 'airsentry'});
+boxplot([slopes_nosent; slopes_sent], cats);
+ylabel('Decay constant (s^{-1})');
+
+% Compute confidence interval
+if (~isempty(slopes_sent))
+    pval_f = 0;
+    ci_f = [];
+    for k=1:1000
+        temp_nosent = datasample(slopes_nosent,size(slopes_nosent,1),'Weights',lengths_nosent);
+        temp_sent = datasample(slopes_sent,size(slopes_sent,1)*2,'Weights',lengths_sent);
+
+        %[h,pval_temp, ci_temp] = ttest2(temp_nosent, temp_sent, 'tail', 'both');
+        %[h,pval_temp, ci_temp] = kstest2(temp_nosent, temp_sent, 'Tail', 'unequal'); %Since they are highly non-normal (anderson-darling test) 
+        [pval_temp, h, ci_temp] = ranksum(temp_nosent, temp_sent, 'tail', 'right'); %Since they are highly non-normal (anderson-darling test)
+        ci_temp = [0,0];
+
+        pval_f = pval_f + pval_temp;
+
+        if isempty(ci_f)
+            ci_f = ci_temp;
+        else
+            ci_f = ci_f + ci_temp;
+        end
+    end
+    pval_f = pval_f/1000;
+    ci_f = ci_f/1000;
+
+
+
+    [h,pval, ci] = ttest2(slopes_nosent, slopes_sent, 'tail', 'both');
+end
+
+partLevel = 0.5;
+t_95_nosent = log(partLevel)./slopes_nosent_f/60;
+t_95_sent = log(partLevel)./slopes_sent_f/60;
+
+t_95_nosent_med = log(partLevel)/nosent_med/60;
+t_95_sent_med = log(partLevel)/sent_med/60;
+%t_95_sent_mean_lb = log(partLevel)/(nosent_mean - ci_f(1))/60;
+%t_95_sent_mean_ub = log(partLevel)/(nosent_mean - ci_f(2))/60;
+
+%ub2 = (nosent_mean - ci_f(1))/nosent_mean;
+m2 = (sent_med)/nosent_med;
+%lb2 = (nosent_mean - ci_f(2))/nosent_mean;
+
+
+
+subplot(1,3,3);
+cats = [zeros(size(t_95_nosent,1),1);ones(size(t_95_sent,1),1)];
+cats = categorical(cats,[0,1], {'no airsentry', 'airsentry'});
+boxplot([t_95_nosent; t_95_sent],cats);
+ylabel('minutes');
+title('time taken to reach 50%');
+ylim([0,120]);
+if (~isempty(slopes_sent))
+    text(0,110,['p=',num2str(pval_f), ', med ratio=', num2str(m2), 't_{nosent}=', num2str(t_95_nosent_med), 'mins, t_{sent}=', num2str(t_95_sent_med), 'mins']);
+    text(0,100,['n_{proc}=', num2str(nnz(usesAirSentry)), '/', num2str(nnz(~usesAirSentry)), ':  ', num2str(numel(lengths_sent)), '/', num2str(numel(lengths_nosent))]);
+else
+    text(0,110,['t_{nosent}=', num2str(t_95_nosent_med), 'mins, t_{sent}=', num2str(t_95_sent_med), 'mins']);
+end
+    
+%histogram(t_95_nosent, 100);
+%hold on;
+%histogram(t_95_sent, 50);
+%hold off;
+
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_upper', label, '.fig']));
+saveas(gcf,fullfile(resultsFolder,['fullproc_interprocslopes_upper', label, '.png']));
+%%
 
 %%%
 tempTable = removevars(upperGITable, {'StudyNumber', 'procedureMax_all', 'procedureMax_sum', 'procedureMax_sum_v', 'procedureTot_all', 'procedureTot_sum', 'procedureTot_sum_v', 'procedureMean_all', 'procedureMean_sum', 'procedureMean_sum_v','nearestEvent_all', 'nearestEvent_sum', 'preProcedureMax_all','preProcedureMax_sum','preProcedureMax_sum_v', 'nearestEvent_sum_v', 'tDiff_all', 'tDiff_sum', 'tDiff_sum_v', 'diameters'});
@@ -1404,32 +2517,42 @@ ylabel('Out-of-bag MSE');
 saveas(gcf,fullfile(resultsFolder,['fullproc_forestugi_', label, '.fig']));
 saveas(gcf,fullfile(resultsFolder,['fullproc_forestugi_', label, '.png']));
 
+diary off;
+
 %% Lower GI
-tempTable = removevars(lowerGITable, {'StudyNumber', 'procedureMax_all', 'procedureMax_sum', 'procedureMax_sum_v', 'procedureTot_all', 'procedureTot_sum', 'procedureTot_sum_v', 'procedureMean_all', 'procedureMean_sum', 'procedureMean_sum_v','nearestEvent_all', 'nearestEvent_sum', 'preProcedureMax_all','preProcedureMax_sum','preProcedureMax_sum_v', 'nearestEvent_sum_v', 'tDiff_all', 'tDiff_sum', 'tDiff_sum_v', 'diameters'});
-%tempForest = TreeBagger(1000, tempTable, lowerGITable.procedureMax_sum, 'CategoricalPredictors',[1,4:size(tempTable,2)], 'Method', 'Regression', 'OOBPrediction','On', 'OOBPredictorImportance','on','Surrogate','on','PredictorSelection', 'interaction-curvature', 'NumPredictorsToSample', 'all');
-tempForest = TreeBagger(1000, tempTable, lowerGITable.procedureTot_sum./lowerGITable.procedureDuration, 'CategoricalPredictors',[1,4:size(tempTable,2)], 'Method', 'Regression', 'OOBPrediction','On', 'OOBPredictorImportance','on','Surrogate','on','PredictorSelection', 'interaction-curvature');%, 'NumPredictorsToSample', 'all');
+if ~isempty(lowerGITable)
+    tempTable = removevars(lowerGITable, {'StudyNumber', 'procedureMax_all', 'procedureMax_sum', 'procedureMax_sum_v', 'procedureTot_all', 'procedureTot_sum', 'procedureTot_sum_v', 'procedureMean_all', 'procedureMean_sum', 'procedureMean_sum_v','nearestEvent_all', 'nearestEvent_sum', 'preProcedureMax_all','preProcedureMax_sum','preProcedureMax_sum_v', 'nearestEvent_sum_v', 'tDiff_all', 'tDiff_sum', 'tDiff_sum_v', 'diameters'});
+    %tempForest = TreeBagger(1000, tempTable, lowerGITable.procedureMax_sum, 'CategoricalPredictors',[1,4:size(tempTable,2)], 'Method', 'Regression', 'OOBPrediction','On', 'OOBPredictorImportance','on','Surrogate','on','PredictorSelection', 'interaction-curvature', 'NumPredictorsToSample', 'all');
+    tempForest = TreeBagger(1000, tempTable, lowerGITable.procedureTot_sum./lowerGITable.procedureDuration, 'CategoricalPredictors',[1,4:size(tempTable,2)], 'Method', 'Regression', 'OOBPrediction','On', 'OOBPredictorImportance','on','Surrogate','on','PredictorSelection', 'interaction-curvature');%, 'NumPredictorsToSample', 'all');
 
-imp = tempForest.OOBPermutedPredictorDeltaError;
-%imp(imp < 0) = 0;
-figure('units','normalized','outerposition',[0 0 1 1]);
-subplot(1,2,1);
-bar(imp);
-title('Lower GI Variable importance');
-ylabel('Predictor importance estimates');
-xlabel('Predictors');
-h = gca;
-h.XTickLabel = tempForest.PredictorNames;
-h.XTick = 1:size(tempForest.PredictorNames,2);
-h.XTickLabelRotation = 45;
-h.TickLabelInterpreter = 'none';
+    imp = tempForest.OOBPermutedPredictorDeltaError;
+    %imp(imp < 0) = 0;
+    figure('units','normalized','outerposition',[0 0 1 1]);
+    subplot(1,2,1);
+    bar(imp);
+    title('Lower GI Variable importance');
+    ylabel('Predictor importance estimates');
+    xlabel('Predictors');
+    h = gca;
+    h.XTickLabel = tempForest.PredictorNames;
+    h.XTick = 1:size(tempForest.PredictorNames,2);
+    h.XTickLabelRotation = 45;
+    h.TickLabelInterpreter = 'none';
 
-subplot(1,2,2);
-oobErrorBaggedEnsemble = oobError(tempForest);
-plot(oobErrorBaggedEnsemble)
-xlabel('Number of grown trees');
-ylabel('Out-of-bag MSE');
+    subplot(1,2,2);
+    oobErrorBaggedEnsemble = oobError(tempForest);
+    plot(oobErrorBaggedEnsemble)
+    xlabel('Number of grown trees');
+    ylabel('Out-of-bag MSE');
 
-saveas(gcf,fullfile(resultsFolder,['fullproc_forestlgi_', label, '.fig']));
-saveas(gcf,fullfile(resultsFolder,['fullproc_forestlgi_', label, '.png']));
+    saveas(gcf,fullfile(resultsFolder,['fullproc_forestlgi_', label, '.fig']));
+    saveas(gcf,fullfile(resultsFolder,['fullproc_forestlgi_', label, '.png']));
 
-a = 1;
+    a = 1;
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function err = objFun(p, pd_h, pd_nh)
+    temp1 = paramci(pd_h,'Alpha',p);
+    temp2 = paramci(pd_nh,'Alpha', p);
+    err = abs(temp1(1) - temp2(2));
+end

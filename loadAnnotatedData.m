@@ -1,17 +1,32 @@
-function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_data, fg_data, data_v, bg_data_v, fg_data_v, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P)
+function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_data, fg_data, data_v, bg_data_v, fg_data_v, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P, dataFolder)
 
     datestring = sprintf('%0.4d%0.2d%0.2d',Y,M,D);
 
-    folder = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\',datestring,'\'];
+    currentFolder = [dataFolder, '\',datestring,'\'];
 
-    if exist(fullfile(folder, [datestring,'_aerotrak.xlsx']))
-        T_raw = readtable(fullfile(folder, [datestring,'_aerotrak.xlsx']));
+    if exist(fullfile(currentFolder, [datestring,'_aerotrak.xlsx']))
+        warnState = warning('off');
+        %T_raw = readtable(fullfile(currentFolder, [datestring,'_aerotrak.xlsx']));%,'VariableNamingRule', 'modify');
+       
+        tempOpts = detectImportOptions(fullfile(currentFolder, [datestring,'_aerotrak.xlsx']), 'Range', 10);
+        opts = spreadsheetImportOptions("NumVariables", size(tempOpts.VariableNames,2));
+        opts.VariableNames = tempOpts.VariableNames;
+        opts.VariableTypes = tempOpts.VariableTypes;     
+        opts.DataRange = tempOpts.DataRange;
+
+        
+        T_raw = readtable(fullfile(currentFolder, [datestring,'_aerotrak.xlsx']), opts);
         %T = readtable('/home/george/Desktop/20201030_aerotrak.xlsx');
+        warning(warnState);
 
-        T_procindex_raw = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\ProcedureIndex.xlsx', 'ReadVariableNames', true, 'Format', 'auto');
-
-        annotationFile = fullfile(folder,[datestring, '_patient', num2str(P), '.csv']);
+        warnState = warning('off');
+        T_procindex_raw = readtable([dataFolder, '\ProcedureIndex.xlsx'], 'ReadVariableNames', true);%, 'Format', 'auto');
+        warning(warnState);
+        
+        warnState = warning('off');
+        annotationFile = fullfile(currentFolder,[datestring, '_patient', num2str(P), '.csv']);
         T_annotation = readtable(annotationFile, 'ReadVariableNames', false, 'HeaderLines', 0, 'Format', 'auto'); % FIX ignores first row
+        warning(warnState);
 
         %% Exclude if necessary
         exclude = false;
@@ -24,12 +39,16 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
         else
             tempStudyNo = str2num(temp);
             
+            if tempStudyNo == 153
+                a = 1;
+            end
+            
             tableIdx = find(T_procindex_raw.StudyNo_ == tempStudyNo);
 
             exclude_temp = T_procindex_raw.Exclude(tableIdx);
             exclude_temp = exclude_temp{1};
 
-            temp = regexp(exclude_temp, 'y.*');
+            temp = regexpi(exclude_temp, 'y.*');
 
             if ~isempty(temp)
                 exclude = true;
@@ -75,7 +94,7 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
 
 
     
-    nextAnnotationFile = fullfile(folder,[datestring, '_patient', num2str(P+1), '.csv']);
+    nextAnnotationFile = fullfile(currentFolder,[datestring, '_patient', num2str(P+1), '.csv']);
     
     nextPatientExists = false;
     if exist(nextAnnotationFile)
@@ -198,8 +217,9 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'sedation used'),2);
     temp = table2cell(temp);
-    [sedation, ~] = processVars(temp, {'midazolam','propofol', 'entonox', 'none'}, {'.*mid.*'}, {'.*prop.*'}, {'.*ento.*'},{'.*none.*','.*N/A.*',''});
-    T_othervars.Sedation = sedation;
+    [sedation, ~] = processVars(temp, {'midazolam','propofol', 'entonox', 'throat spray', 'none'}, {'.*mid.*'}, {'.*prop.*'}, {'.*ento.*'},{'throat spray only', 'throatspray only', 'throat spray', 'throatspray'}, {'no', '.*none.*', 'no sedation.*','.*N/A.*',''});
+    %[sedation, ~] = processVars(temp, {'midazolam','propofol', 'entonox', 'none'}, {'.*mid.*'}, {'.*prop.*'}, {'.*ento.*'},{'throat spray only', 'throatspray only', 'throat spray', 'throatspray', 'no', '.*none.*', 'no sedation.*','.*N/A.*',''});
+    T_othervars.Sedation = sedation; %% FIX 'none' for OGD may mean throatspray only -- see below for fix
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'sex'),2);
     temp = table2cell(temp);
@@ -218,12 +238,12 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
          
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Smoker'),2);
     temp = table2cell(temp);
-    [isSmoker, ~] = processVars(temp, {'yes','no', 'unknown'}, {'.*occasionally.*', '.*yes.*', '.*[1-9]?[0-9]*.*'}, {'.*no.*', '.*[0]+.*'}, {'.*none.*','.*N/A.*',''});
+    [isSmoker, ~] = processVars(temp, {'yes','no', 'vape', 'unknown'}, {'.*occasionally.*', '.*yes.*', '.*[1-9]+[0-9]*.*'}, {'.*no.*', '.*[0]+.*','past'}, {'.*vap.*'}, {'.*none.*','.*N/A.*',''});
     T_othervars.Smoker = isSmoker;
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'previous hysterectomy'),2);
     temp = table2cell(temp);
-    [previousHyst, ~] = processVars(temp, {'yes','no', 'unknown'}, {'y.*'}, {'.*no', 'n'}, {'.*none.*','.*N/A.*',''});
+    [previousHyst, ~] = processVars(temp, {'yes','no', 'unknown'}, {'y.*'}, {'.*no', '^n$'}, {'.*none.*','.*N/A.*',''});
     T_othervars.PreviousHysterectomy = previousHyst;
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'extensive diverticular disease'),2);
@@ -234,16 +254,21 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Route of UGI'),2);
     temp = table2cell(temp);
     [ugiRoute, ~] = processVars(temp, {'oral', 'nasal', 'N/A'}, {'.*oral.*', '.*mouth.*'}, {'.*nasal.*', '.*nose.*'}, {'.*none.*','.*N/A.*',''});
-    ugiRoute = addcats(ugiRoute,'nasal abandonded');
+    ugiRoute = addcats(ugiRoute,'nasal abandoned');
     % Check if chase from nasal to oral
     ugiRoute_temp = T_procindex_raw.UGIRoute(tableIdx);
     temp = regexpi(ugiRoute_temp, '.*half.*');
     if ~isempty(temp{1})
         if ugiRoute == 'nasal'
-            ugiRoute = 'nasal abandoned';
+            ugiRoute = categorical({'nasal abandoned'}, categories(ugiRoute));
         end
     end
     T_othervars.UGIroute = ugiRoute;
+    
+    %Procedure type
+    temp = T_procindex_raw.ProcedureType(tableIdx);
+    [procedureType, ~] = processVars(temp, {'gastroscopy', 'colonoscopy', 'sigmoidoscopy','EUS', 'ERCP', 'cytosponge', 'unknown/N/A'}, {'.*gastro.*'}, {'.*colon.*'},{'.*sigmoid.*'}, {'EUS','.*ultrasound.*'},{'ERCP'}, {'.*cytosponge.*'},{'.*unknown.*','.*N/A.*',''});
+    T_othervars.ProcedureType = procedureType;
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Degree of looping'),2);
     temp = table2cell(temp);
@@ -261,14 +286,38 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     temp2 = temp{1};
     if (isnumeric(temp))
         hiatusHernia = categorical(~isnan(temp2)+1,1:2,{'no', 'yes'});
+        HH_length = temp;
     else
-        [hiatusHernia, ~] = processVars(temp, {'no', 'yes', 'unknown'}, {'.*none.*', '.*[0].*', '.*no.*'}, {'.*[1-9]?[0-9]*.*', '.*yes.*', '.*massive.*'}, {'.*unknown.*','.*N/A.*',''});
+        [hiatusHernia, ~] = processVars(temp, {'no', 'yes', 'unknown'}, {'.*none.*', '.*[0].*', '.*no.*'}, {'.*[1-9]+[0-9]*.*', '.*yes.*', '.*massive.*'}, {'.*unknown.*','.*N/A.*','NA.*',''});
+        
+        if hiatusHernia == 'yes'
+            result = regexpi(temp, '.*([1-9]+[0-9]*).*','tokens');
+            result2 = result{1};
+            if ~isempty(result2)
+                result2 = result2{1};
+                HH_length = str2num(result2{1});
+                
+            else
+                HH_length = NaN;
+            end
+            T_othervars.HH_length = HH_length;
+        else
+            T_othervars.HH_length = NaN;
+        end
+        %temp
+        %T_othervars.HH_length
+        %hiatusHernia
+        %disp('-----------');
     end
+    if T_othervars.Procedure == 'upper GI' && hiatusHernia == 'unknown'
+        hiatusHernia = categorical(cellstr('no')); %Upper GI always spots hiatus hernia
+    end
+    
     T_othervars.HiatusHernia = hiatusHernia;
     
     temp = T_othervars_raw(strcmpi(T_othervars_raw.Var1, 'Use of intermittent suctioning'),2);
     temp = table2cell(temp);
-    [suctioning, ~] = processVars(temp, {'no', 'yes', 'unknown/NA'}, {'.*none.*', '.*no.*'}, {'.*yes.*', '.*y.*'}, {'.*unknown.*','.*N/A.*',''});
+    [suctioning, ~] = processVars(temp, {'no', 'yes', 'unknown/NA'}, {'.*none.*', '.*no.*'}, {'.*yes.*', '^y$', 'through scope'}, {'.*unknown.*','.*N/A.*','NA.*',''});
     T_othervars.Suctioning = suctioning;
     
     % Last 2 vars pull from proc. index
@@ -277,11 +326,11 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     tableIdx = find(T_procindex_raw.StudyNo_ == T_othervars.StudyNumber);
     
     roomType_temp = T_procindex_raw.RoomType(tableIdx);
-    [roomType, ~] = processVars(roomType_temp, {'endoscopy', 'theatre', 'unknown/NA'}, {'.*endoscopy.*'}, {'.*theatre.*'}, {'.*unknown.*','.*N/A.*',''});
+    [roomType, ~] = processVars(roomType_temp, {'endoscopy', 'theatre', 'laminar flow', 'unknown/NA'}, {'.*endoscopy.*'}, {'theat.*'}, {'.*laminar.*'}, {'.*unknown.*','.*N/A.*',''});
     T_othervars.RoomType = roomType;
     
     patientMask_temp = T_procindex_raw.PatientMaskUsed(tableIdx);
-    [patientMask, ~] = processVars(patientMask_temp, {'yes', 'no'}, {'.*yes.*', 'y'}, {'.*no.*', 'n','.*unknown.*','.*N/A.*',''});
+    [patientMask, ~] = processVars(patientMask_temp, {'bronchoscopy', 'surgical', 'no'}, {'.*yes.*', '^y$', '.*bronchoscopy.*'},{'.*surgical.*'}, {'.*no.*', '^n$','.*unknown.*','.*N/A.*',''});
     T_othervars.PatientMask = patientMask;
     
     airSentryUsed_temp = roomType_temp{1};
@@ -291,6 +340,10 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
     else
         T_othervars.AirSentryUsed = true;
     end
+    
+    T_othervars.RoomType(T_othervars.AirSentryUsed) = 'endo+airsentry'; % Makes plotting simpler!
+    
+    T_othervars.CoughEvents = nnz(strcmpi(eventNames.Var1, 'Cough')) + nnz(strcmpi(eventNames.Var1, 'Cough during nasal'));
     
     %T_othervars = T_othervars';
     %T_othervars.RoomType = roomType;
@@ -305,6 +358,13 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
 %         roomType = categorical(roomType_raw+1,1:2,{'Endoscopy room', 'Theatre'});
 %         
 %           
+    %% Fix some other bits
+    if T_othervars.ProcedureType == 'gastroscopy' && (T_othervars.Sedation == 'none')
+        %%%T_othervars.Sedation = 'throat spray'; 
+        %%Should really fix data
+        %%%labelling instead
+        
+    end
     
     %%
     for k=1:size(eventNames,1)
@@ -415,8 +475,10 @@ function [data, opTime2, eventTimes, eventNames, avSampleTime, T_othervars, bg_d
         useTubeCorrection = true;
 
         if useTubeCorrection
-            tubeCorrection_tab = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\TubeCalibration\TubeBendCorrection.csv');
+            warnState = warning('off');
+            tubeCorrection_tab = readtable([dataFolder, '\TubeCalibration\TubeBendCorrection.csv']);
             %tubeCorrection_tab = readtable('/home/george/Desktop/TubeBendCorrection.csv');
+            warning(warnState);
             tubeCorrection = table2array(tubeCorrection_tab);
 
             for k=1:nSizes

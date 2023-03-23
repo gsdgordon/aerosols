@@ -17,13 +17,29 @@ addpath('.\Violinplot-Matlab-master');
 useCSVs = false;
 saveFigs = true;
 rejectMasks = true;
+rejectERCP = true;
+rejectLF = true;
+rejectTheatre = true;
+LFonly = false;
+rejectNasalAbandoned = true;
+cytospongeOnly = true;
+rejectCytosponge = false;
+
 limitSize = true;
 lt = false;
 sizeLim = 5;
+analyseVariables = true;
 
+computeEventPvals = true; 
+computeEventPvals_v = false;    
+computeEventPvals_mu = false;    
+computeEventPvals_sig = false;
+computeVarPvals = false;
+
+username = getenv('username');
 
 if useCSVs
-    folder = 'C:\Users\george\OneDrive - The University of Nottingham\SAVE\csv0909_2511';
+    folder = ['C:\Users\', username, '\OneDrive - The University of Nottingham\SAVE\csv0909_2511'];
 
     loadFolder = true;
     if loadFolder
@@ -60,10 +76,10 @@ if useCSVs
     nFiles = size(fileList, 1);
 else
     % This loads all events and times
-    folder = sprintf('%s_results', datestr(now,'mm-dd-yyyy'));
+    folder = sprintf('%s_results', datestr(now,'yyyy-mm-dd'));
     %folder = '01-07-2021_results';
     
-    dataDir = ['C:\Users\george\OneDrive - The University of Nottingham\SAVE\'];
+    dataDir = ['C:\Users\', username, '\OneDrive - The University of Nottingham\SAVE\'];
     
     folder = [dataDir, folder];
     if ~exist(folder)
@@ -71,44 +87,85 @@ else
     end
     
 %     eventList = {'Upper GI_Null reference',...
-%                 %'Lower GI_Null reference',...
-%                 %'Lower GI_Procedure starts',...
-%                 %'Lower GI_Procedure ends',...
-%                 %'Lower GI_Abdominal pressure',...
-%                 %'Lower GI_Biopsy sampling',...
-%                 %'Lower GI_Caecal intubation',...
-%                 %'Lower GI_Catheter in',...
-%                 %'Lower GI_Catheter out',...
-%                 %'Lower GI_Position changes',...
-%                 %'Lower GI_Diathermy pad used',...
-%                 %'Lower GI_Rectal insufflation/retroflexion',...
+%                  'Lower GI_Null reference',...
+%                 'Upper GI_Deep breaths',...
+%                 'Upper GI_Forced cough',...
+%                 'Upper GI_Speaking',...
 %                 'Upper GI_Procedure starts',...
 %                 'Upper GI_Procedure ends',...
 %                 'Upper GI_Procedure starts nasal',...
 %                 'Upper GI_Procedure ends nasal',...
 %                 'Upper GI_Cough',...
 %                 'Upper GI_Cough during nasal',...
-%                 'Upper GI_Deep breaths',...
-%                 'Upper GI_Forced cough',...
 %                 'Upper GI_Fundal retroflexion',...
 %                 'Upper GI_Nasal spray given',...
+%                 'Upper GI_Throat spray given',...
+%                 'Lower GI_Procedure starts',...
+%                 'Lower GI_Procedure ends',...
+%                 'Lower GI_Abdominal pressure',...
+%                 'Lower GI_Biopsy sampling',...
+%                 'Lower GI_Caecal intubation',...
+%                 'Lower GI_Catheter in',...
+%                 'Lower GI_Catheter out',...
+%                 'Lower GI_Position changes',...
+%                 'Lower GI_Diathermy pad used',...
+%                 'Lower GI_Rectal insufflation/retroflexion'};
+% % 
+%     eventList = {'Upper GI_Null reference',...
+%                  'Lower GI_Null reference',...
+%                 'Upper GI_Forced cough',...
+%                 'Upper GI_Deep breaths',...
 %                 'Upper GI_Speaking',...
+%                 'Upper GI_Procedure starts',...
+%                 'Upper GI_Procedure ends',...
+%                 'Upper GI_Procedure starts nasal',...
+%                 'Upper GI_Procedure ends nasal',...
+%                 'Upper GI_Cough',...
+%                 'Upper GI_Cough during nasal',...
+%                 'Upper GI_Fundal retroflexion',...
+%                 'Upper GI_Nasal spray given',...
+%                 'Upper GI_Throat spray given',...
+%                 'Upper GI_Biopsy sampling'};
+            
+%      eventList = {'Upper GI_Null reference',...
+%                  'Lower GI_Null reference',...
+%                 'Upper GI_Forced cough',...
+%                 'Upper GI_Procedure starts',...
+%                 'Upper GI_Procedure ends',...
+%                 'Upper GI_Cough',...
+%                 'Upper GI_Fundal retroflexion',...
 %                 'Upper GI_Throat spray given'};
 
-    eventList = {'Upper GI_Null reference',...
+% %             
+%     eventList = {'Upper GI_Null reference',...
+%                  'Lower GI_Null reference',...
+%                 'Upper GI_Throat spray given',...
+%                 'Upper GI_Forced cough'};
+%             
+%      eventList = {'Upper GI_Null reference',...
+%                  'Lower GI_Null reference',...
+%                 'Upper GI_Throat spray given',...
+%                 'Upper GI_Cough',...
+%                 'Upper GI_Procedure starts',...
+%                 'Upper GI_Procedure ends'};
+            
+     eventList = {'Upper GI_Null reference',...
                  'Lower GI_Null reference',...
-                'Upper GI_Procedure starts',...
-                'Upper GI_Procedure ends',...
-                'Upper GI_Procedure starts nasal',...
-                'Upper GI_Procedure ends nasal',...
-                'Upper GI_Cough',...
-                'Upper GI_Cough during nasal',...
-                'Upper GI_Deep breaths',...
-                'Upper GI_Forced cough',...
-                'Upper GI_Fundal retroflexion',...
-                'Upper GI_Nasal spray given',...
-                'Upper GI_Speaking',...
-                'Upper GI_Throat spray given'};
+                'Upper GI_Cough'};
+% 
+%     eventList = {'Upper GI_Null reference',...
+%                 'Lower GI_Null reference',...
+%                 'Upper GI_Forced cough',...
+%                 'Lower GI_Procedure starts',...
+%                 'Lower GI_Procedure ends',...
+%                 'Lower GI_Abdominal pressure',...
+%                 'Lower GI_Biopsy sampling',...
+%                 'Lower GI_Caecal intubation',...
+%                 'Lower GI_Catheter in',...
+%                 'Lower GI_Catheter out',...
+%                 'Lower GI_Position changes',...
+%                 'Lower GI_Diathermy pad used',...
+%                 'Lower GI_Rectal insufflation/retroflexion'};
 
             
     upperGI_nullreffile = 'Upper GI_Null reference';
@@ -156,7 +213,7 @@ else
 
             P = test(4); % TODO ensure dates match
 
-            [data, datatimes, eventTimes, eventNames, avSampleTime, otherVars, bg_data, fg_data, data_v, bg_data_v, fg_data_v, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P);
+            [data, datatimes, eventTimes, eventNames, avSampleTime, otherVars, ~, ~, data_v, ~, ~, diameters, diameters_av, data_next, opTime2_next,  bg_data_next, fg_data_next, data_v_next, bg_data_v_next, fg_data_v_next] = loadAnnotatedData(Y,M,D,P,dataDir);
 
             if isnan(data) % no valid events detected
                 continue;
@@ -384,11 +441,11 @@ for fileIdx = 1:nFiles
 
             % Smoker
             smokerTemp_raw = otherVars.Smoker;
-            [isSmoker, isSmokerCats] = processVars(otherVars.Smoker, {'yes','no', 'unknown'}, {'.*yes.*', '.*[1-9]?[0-9]*.*'}, {'.*no.*', '.*[0]+.*'}, {'.*none.*','.*N/A.*',''});
+            [isSmoker, isSmokerCats] = processVars(otherVars.Smoker, {'yes','no', 'unknown'}, {'.*yes.*', '.*[1-9]+[0-9]*.*'}, {'.*no.*', '.*[0]+.*'}, {'.*none.*','.*N/A.*',''});
 
             % Mask
             usesPatientMask_raw = ismember(patientNos,[59,60,61, 64,65]); %FIX should pull this
-            usesPatientMask = categorical(usesPatientMask_raw+1,1:2,{'No Mask', 'Mask'});
+            usesPatientMask = categorical(usesPatientMask_raw+1,1:2,{'no', 'yes'});
 
             % Room type
             roomType_raw = ismember(patientNos,[31,32,33]); %FIX should pull this
@@ -416,7 +473,7 @@ for fileIdx = 1:nFiles
                 hiatusHernia = categorical(~isnan(hiatusHerniaTemp_raw)+1,1:2,{'no', 'yes'});
                 hiatusHerniaCats = categories(hiatusHernia);
             else
-                [hiatusHernia, hiatusHerniaCats] = processVars(otherVars.HiatusHernia, {'no', 'yes', 'unknown'}, {'.*none.*', '.*[0].*', '.*no.*'}, {'.*[1-9]?[0-9]*.*', '.*yes.*', '.*massive.*'}, {'.*unknown.*','.*N/A.*',''});
+                [hiatusHernia, hiatusHerniaCats] = processVars(otherVars.HiatusHernia, {'no', 'yes', 'unknown'}, {'.*none.*', '.*[0].*', '.*no.*'}, {'.*[1-9]+[0-9]*.*', '.*yes.*', '.*massive.*'}, {'.*unknown.*','.*N/A.*',''});
             end
 
             % Suctioning
@@ -454,7 +511,7 @@ for fileIdx = 1:nFiles
 
         [tempTimes, tempIdxes] = unique(T.eventTimes);
         
-        dataStartCol = 22;
+        dataStartCol = find(strcmpi(T.Properties.VariableNames,'tempData_all1'));
         otherVars = T(sort(tempIdxes, 'ascend'),1:(dataStartCol-2));
         
         eventTimes = tempTimes;
@@ -478,6 +535,7 @@ for fileIdx = 1:nFiles
         discomfort = otherVars.Discomfort;
         hiatusHernia = otherVars.HiatusHernia;
         suctioning = otherVars.Suctioning;
+        procedureType = otherVars.ProcedureType;
 
         % Add air sentry and toher vars
     end
@@ -488,7 +546,7 @@ for fileIdx = 1:nFiles
     if useTubeCorrection
         
         if useCSVs
-            tubeCorrection_tab = readtable('C:\Users\george\OneDrive - The University of Nottingham\SAVE\TubeCalibration\TubeBendCorrection.csv');
+            tubeCorrection_tab = readtable(['C:\Users\', username, '\OneDrive - The University of Nottingham\SAVE\TubeCalibration\TubeBendCorrection.csv']);
             %tubeCorrection_tab = readtable('/home/george/Desktop/TubeBendCorrection.csv');
             tubeCorrection = table2array(tubeCorrection_tab);
 
@@ -499,10 +557,10 @@ for fileIdx = 1:nFiles
             end
         else
             % Direct method automatically applies tube correction
-            correctionVal = zeros(1,nSizes);
+            correctionVal = zeros(1,size(diameters,1));
         end
     else
-        correctionVal = zeros(1,nSizes);
+        correctionVal = zeros(1,size(diameters,1));
     end
 
     %%
@@ -590,7 +648,7 @@ for fileIdx = 1:nFiles
         data_v_density = data_v ./ repmat(currentLogBinSizes,1, size(data,2)); %Try using log binsizes
         data_density = data ./ repmat(currentLogBinSizes,1, size(data,2));
         
-        [bg_current, fg_current] = splitBGFG(data, avSampleTime, tempValid);
+        [bg_current, fg_current] = splitBGFG(data, avSampleTime, tempValid, 'causal', false);
 
         bg_current_v = bg_current .* repmat(currentVols,1, size(data,2));
         fg_current_v = fg_current .* repmat(currentVols,1, size(data,2));
@@ -1027,15 +1085,58 @@ for fileIdx = 1:nFiles
                 end
 
                 % Fit number
-                reject = A_diff < -3*noiseStd; % Reject points that are probably errors
-                reject_v = A_v_diff < -3*noiseStd_v; % Reject points that are probably errors
+                reject = A_diff < -4*noiseStd; % Reject points that are probably errors
+                reject_v = A_v_diff < -4*noiseStd_v; % Reject points that are probably errors
+                
+                label_temp = label;
                 
                 if rejectMasks
-                    %if strcmpi(label, 'UpperGI_cough') || strcmpi(label, 'UpperGI_procedurestarts') || strcmpi(label, 'UpperGI_procedureends') || strcmpi(label, 'UpperGI_throatspraygiven')
-                    reject = reject | (usesPatientMask == 'Mask')';
-                    reject_v = reject_v | (usesPatientMask == 'Mask')';
-                    %end
+                    if ~strcmpi(label_temp, 'Upper GI_Deep breaths') && ~strcmpi(label_temp, 'Upper GI_Forced cough') && ~strcmpi(label_temp, 'Upper GI_Speaking')
+                        reject = reject | (usesPatientMask ~= 'no')';
+                        reject_v = reject_v | (usesPatientMask ~= 'no')';
+                    end
                     label = [label, '_rejectMasks'];
+                end
+                
+                if rejectERCP
+                    reject = reject | (procedureType == 'ERCP')' | (procedureType == 'EUS')';
+                    reject_v = reject_v | (procedureType == 'ERCP')' | (procedureType == 'EUS')';
+                end
+                
+                if rejectLF
+                    reject = reject | (roomType == 'laminar flow')';
+                    reject_v = reject_v | (roomType == 'laminar flow')';
+                end
+                
+                if LFonly
+                    reject = reject | (roomType ~= 'laminar flow')';
+                    reject_v = reject_v | (roomType ~= 'laminar flow')';
+                    
+                    noToKeep = nnz(~reject)
+                end
+                
+                if cytospongeOnly
+                    reject = reject | (procedureType ~= 'cytosponge')';
+                    reject_v = reject_v | (procedureType ~= 'cytosponge')';
+                end
+                
+                if rejectCytosponge
+                    reject = reject | (procedureType == 'cytosponge')';
+                    reject_v = reject_v | (procedureType == 'cytosponge')';
+                end
+
+                if rejectTheatre
+                    if ~strcmpi(label_temp, 'Upper GI_Deep breaths') && ~strcmpi(label_temp, 'Upper GI_Forced cough') && ~strcmpi(label_temp, 'Upper GI_Speaking')
+                        reject = reject | (roomType == 'theatre')';
+                        reject_v = reject_v | (roomType == 'theatre')';
+                    end
+                end
+                
+                if rejectNasalAbandoned
+                    if ~strcmpi(label_temp, 'Upper GI_Deep breaths') && ~strcmpi(label_temp, 'Upper GI_Forced cough') && ~strcmpi(label_temp, 'Upper GI_Speaking')
+                        reject = reject | (ugiRoute == 'nasal abandoned')';
+                        reject_v = reject_v | (ugiRoute == 'nasal abandoned')';
+                    end
                 end
                 
                 if nnz(~reject) == 0
@@ -1349,6 +1450,7 @@ for fileIdx = 1:nFiles
     resultsTable.discomfort(fileIdx) = {discomfort(~reject)};
     resultsTable.hiatusHernia(fileIdx) = {hiatusHernia(~reject)};
     resultsTable.suctioning(fileIdx) = {suctioning(~reject)};
+    resultsTable.procedureType(fileIdx) = {otherVars.ProcedureType(~reject)};
     
     resultsTable.age_v(fileIdx) = {otherVars.Age(~reject_v)};
     resultsTable.sex_v(fileIdx) = {otherVars.Sex(~reject_v)};
@@ -1366,6 +1468,7 @@ for fileIdx = 1:nFiles
     resultsTable.discomfort_v(fileIdx) = {discomfort(~reject_v)};
     resultsTable.hiatusHernia_v(fileIdx) = {hiatusHernia(~reject_v)};
     resultsTable.suctioning_v(fileIdx) = {suctioning(~reject_v)};
+    resultsTable.procedureType_v(fileIdx) = {otherVars.ProcedureType(~reject_v)};
     
     resultsTable.samples{fileIdx} = []; %Delete
     
@@ -1373,8 +1476,10 @@ for fileIdx = 1:nFiles
     for tempIdx = 1:fileIdx-1
         event1 = resultsTable.n_raw{tempIdx};
         event1 = event1(:);
+        event1_name = resultsTable.label(tempIdx);
         event2 = resultsTable.n_raw{fileIdx};
         event2 = event2(:);
+        event2_name = resultsTable.label(fileIdx);
         
         %FIX what to do about first distribution
         if tempIdx == 1 || tempIdx == 2
@@ -1393,7 +1498,7 @@ for fileIdx = 1:nFiles
             std2 = resultsTable.std_n(fileIdx);
         end
         
-        computeEventPvals = true; 
+
         
 %         %REMOVE
 %         if tempIdx == 19 || fileIdx == 19 %forcedCough
@@ -1402,7 +1507,7 @@ for fileIdx = 1:nFiles
 %             computeEventPvals = false;
 %         end
         
-        if computeEventPvals
+        if computeEventPvals && (~isempty(regexpi(event1_name, 'Upper GI_Null reference.*')) || ~isempty(regexpi(event1_name, 'Upper GI_Forced cough.*')))
             disp(['Computing significance..', num2str(tempIdx), '/', num2str(fileIdx)]);
             [pMu, pSig, meanRatio, ratioLowCI, ratioUpperCI, mean1_out, mean2_out, samples1out, samples2out] = computeSignificance(event1, event2, noiseMean, noiseStd, mean1, std1, mean2, std2);
             resultsTable.mean_n(tempIdx) = mean1_out;
@@ -1450,7 +1555,7 @@ for fileIdx = 1:nFiles
             std2 = resultsTable.std_v(fileIdx);
         end
         
-        computeEventPvals_v = false;    
+
         if computeEventPvals_v
             disp(['Computing significance..', num2str(tempIdx), '/', num2str(fileIdx)]);
             [pMu_v, pSig_v, meanRatio, ratioLowCI, ratioUpperCI, mean1_out, mean2_out] = computeSignificance(event1, event2, noiseMean_v, noiseStd_v, mean1, std1, mean2, std2, 'muMinIn', -34);
@@ -1480,7 +1585,7 @@ for fileIdx = 1:nFiles
         event2 = event2(:);
         %event2 = log(event2);
                
-        computeEventPvals_mu = true;    
+
         if computeEventPvals_mu
             disp(['Computing significance..', num2str(tempIdx), '/', num2str(fileIdx)]);
             [~,pMu_mu] = ttest2(event1, event2);
@@ -1498,7 +1603,7 @@ for fileIdx = 1:nFiles
         event2 = resultsTable.sig_raw{fileIdx};
         event2 = event2(:);
                
-        computeEventPvals_sig = true;    
+    
         if computeEventPvals_sig
             disp(['Computing significance..', num2str(tempIdx), '/', num2str(fileIdx)]);
             [~,pMu_sig] = kstest2(event1, event2); %Possibly not valid for gamma distributed vars!
@@ -1761,370 +1866,403 @@ for fileIdx = 1:nFiles
         end
     end
     
-    %% Now plot variables
-    if (fileIdx == 1)
-        sedationFig_n = figure;
-        sexFig_n = figure;
-        analToneFig_n = figure;
-        co2vWaterFig_n = figure;
-        smokerFig_n = figure;
-        maskFig_n = figure;
-        roomTypeFig_n = figure;
-        ugiRouteFig_n = figure;
-        divertDiseaseFig_n = figure;
-        loopingFig_n = figure;
-        discomfortFig_n = figure;
-        hiatusFig_n = figure;
-        suctioningFig_n = figure;
-        ageFig_n = figure;
-        bmiFig_n = figure;
-        
-        sedationFig_v = figure;
-        sexFig_v = figure;
-        analToneFig_v = figure;
-        co2vWaterFig_v = figure;
-        smokerFig_v = figure;
-        maskFig_v = figure;
-        roomTypeFig_v = figure;
-        ugiRouteFig_v = figure;
-        divertDiseaseFig_v = figure;
-        loopingFig_v = figure;
-        discomfortFig_v = figure;
-        hiatusFig_v = figure;
-        suctioningFig_v = figure;
-        ageFig_v = figure;
-        bmiFig_v = figure;
-        
-        sedationFig_mu = figure;
-        sexFig_mu = figure;
-        analToneFig_mu = figure;
-        co2vWaterFig_mu = figure;
-        smokerFig_mu = figure;
-        maskFig_mu = figure;
-        roomTypeFig_mu = figure;
-        ugiRouteFig_mu = figure;
-        divertDiseaseFig_mu = figure;
-        loopingFig_mu = figure;
-        discomfortFig_mu = figure;
-        hiatusFig_mu = figure;
-        suctioningFig_mu = figure;
-        ageFig_mu = figure;
-        bmiFig_mu = figure;
-        
-        sedationFig_sig = figure;
-        sexFig_sig = figure;
-        analToneFig_sig = figure;
-        co2vWaterFig_sig = figure;
-        smokerFig_sig = figure;
-        maskFig_sig = figure;
-        roomTypeFig_sig = figure;
-        ugiRouteFig_sig = figure;
-        divertDiseaseFig_sig = figure;
-        loopingFig_sig = figure;
-        discomfortFig_sig = figure;
-        hiatusFig_sig = figure;
-        suctioningFig_sig = figure;
-        ageFig_sig = figure;
-        bmiFig_sig = figure;
-        
-        varFigs(1).fig = sedationFig_n;
-        varFigs(1).varname = 'sedation';
-        varFigs(1).rawvar = 'n_raw';
-        varFigs(1).type = 'discrete';
-        varFigs(2).fig = analToneFig_n;
-        varFigs(2).varname = 'analTone';
-        varFigs(2).rawvar = 'n_raw';
-        varFigs(2).type = 'discrete';
-        varFigs(3).fig = co2vWaterFig_n;
-        varFigs(3).varname = 'useOfCO2OrWater';
-        varFigs(3).rawvar = 'n_raw';
-        varFigs(3).type = 'discrete';
-        varFigs(4).fig = smokerFig_n;
-        varFigs(4).varname = 'isSmoker';
-        varFigs(4).rawvar = 'n_raw';
-        varFigs(4).type = 'discrete';
-        varFigs(5).fig = maskFig_n;
-        varFigs(5).varname = 'usesPatientMask';
-        varFigs(5).rawvar = 'n_raw';
-        varFigs(5).type = 'discrete';
-        varFigs(6).fig = roomTypeFig_n;
-        varFigs(6).varname = 'roomType';
-        varFigs(6).rawvar = 'n_raw';
-        varFigs(6).type = 'discrete';
-        varFigs(7).fig = ugiRouteFig_n;
-        varFigs(7).varname = 'ugiRoute';
-        varFigs(7).type = 'discrete';
-        varFigs(7).rawvar = 'n_raw';
-        varFigs(8).fig = divertDiseaseFig_n;
-        varFigs(8).varname = 'diverticularDisease';
-        varFigs(8).rawvar = 'n_raw';
-        varFigs(8).type = 'discrete';
-        varFigs(9).fig = loopingFig_n;
-        varFigs(9).varname = 'looping';
-        varFigs(9).rawvar = 'n_raw';
-        varFigs(9).type = 'discrete';
-        varFigs(10).fig = discomfortFig_n;
-        varFigs(10).varname = 'discomfort';
-        varFigs(10).rawvar = 'n_raw';
-        varFigs(10).type = 'discrete';
-        varFigs(11).fig = hiatusFig_n;
-        varFigs(11).varname = 'hiatusHernia';
-        varFigs(11).rawvar = 'n_raw';
-        varFigs(11).type = 'discrete';
-        varFigs(12).fig = suctioningFig_n;
-        varFigs(12).varname = 'suctioning';
-        varFigs(12).rawvar = 'n_raw';
-        varFigs(12).type = 'discrete';
-        varFigs(13).fig = ageFig_n;
-        varFigs(13).varname = 'age';
-        varFigs(13).rawvar = 'n_raw';
-        varFigs(13).type = 'continuous';
-        varFigs(14).fig = bmiFig_n;
-        varFigs(14).varname = 'bmi';
-        varFigs(14).rawvar = 'n_raw';
-        varFigs(14).type = 'continuous';
-        
-        %repeat for volume
-        varFigs(15).fig = sedationFig_v;
-        varFigs(15).varname = 'sedation_v';
-        varFigs(15).rawvar = 'v_raw';
-        varFigs(15).type = 'discrete';
-        varFigs(16).fig = analToneFig_v;
-        varFigs(16).varname = 'analTone_v';
-        varFigs(16).rawvar = 'v_raw';
-        varFigs(16).type = 'discrete';
-        varFigs(17).fig = co2vWaterFig_v;
-        varFigs(17).varname = 'useOfCO2OrWater_v';
-        varFigs(17).rawvar = 'v_raw';
-        varFigs(17).type = 'discrete';
-        varFigs(18).fig = smokerFig_v;
-        varFigs(18).varname = 'isSmoker_v';
-        varFigs(18).rawvar = 'v_raw';
-        varFigs(18).type = 'discrete';
-        varFigs(19).fig = maskFig_v;
-        varFigs(19).varname = 'usesPatientMask_v';
-        varFigs(19).rawvar = 'v_raw';
-        varFigs(19).type = 'discrete';
-        varFigs(20).fig = roomTypeFig_v;
-        varFigs(20).varname = 'roomType_v';
-        varFigs(20).rawvar = 'v_raw';
-        varFigs(20).type = 'discrete';
-        varFigs(21).fig = ugiRouteFig_v;
-        varFigs(21).varname = 'ugiRoute_v';
-        varFigs(21).rawvar = 'v_raw';
-        varFigs(21).type = 'discrete';
-        varFigs(22).fig = divertDiseaseFig_v;
-        varFigs(22).varname = 'diverticularDisease_v';
-        varFigs(22).rawvar = 'v_raw';
-        varFigs(22).type = 'discrete';
-        varFigs(23).fig = loopingFig_v;
-        varFigs(23).varname = 'looping_v';
-        varFigs(23).rawvar = 'v_raw';
-        varFigs(23).type = 'discrete';
-        varFigs(24).fig = discomfortFig_v;
-        varFigs(24).varname = 'discomfort_v';
-        varFigs(24).rawvar = 'v_raw';
-        varFigs(24).type = 'discrete';
-        varFigs(25).fig = hiatusFig_v;
-        varFigs(25).varname = 'hiatusHernia_v';
-        varFigs(25).rawvar = 'v_raw';
-        varFigs(25).type = 'discrete';
-        varFigs(26).fig = suctioningFig_v;
-        varFigs(26).varname = 'suctioning_v';
-        varFigs(26).rawvar = 'v_raw';
-        varFigs(26).type = 'discrete';
-        varFigs(27).fig = ageFig_v;
-        varFigs(27).varname = 'age_v';
-        varFigs(27).rawvar = 'v_raw';
-        varFigs(27).type = 'continuous';
-        varFigs(28).fig = bmiFig_v;
-        varFigs(28).varname = 'bmi_v';
-        varFigs(28).rawvar = 'v_raw';
-        varFigs(28).type = 'continuous';
-        
-        %repeat for size
-        varFigs(29).fig = sedationFig_mu;
-        varFigs(29).varname = 'sedation';
-        varFigs(29).rawvar = 'mu_raw';
-        varFigs(29).type = 'discrete';
-        varFigs(30).fig = analToneFig_mu;
-        varFigs(30).varname = 'analTone';
-        varFigs(30).rawvar = 'mu_raw';
-        varFigs(30).type = 'discrete';
-        varFigs(31).fig = co2vWaterFig_mu;
-        varFigs(31).varname = 'useOfCO2OrWater';
-        varFigs(31).rawvar = 'mu_raw';
-        varFigs(31).type = 'discrete';
-        varFigs(32).fig = smokerFig_mu;
-        varFigs(32).varname = 'isSmoker';
-        varFigs(32).rawvar = 'mu_raw';
-        varFigs(32).type = 'discrete';
-        varFigs(33).fig = maskFig_mu;
-        varFigs(33).varname = 'usesPatientMask';
-        varFigs(33).rawvar = 'mu_raw';
-        varFigs(33).type = 'discrete';
-        varFigs(34).fig = roomTypeFig_mu;
-        varFigs(34).varname = 'roomType';
-        varFigs(34).rawvar = 'mu_raw';
-        varFigs(34).type = 'discrete';
-        varFigs(35).fig = ugiRouteFig_mu;
-        varFigs(35).varname = 'ugiRoute';
-        varFigs(35).rawvar = 'mu_raw';
-        varFigs(35).type = 'discrete';
-        varFigs(36).fig = divertDiseaseFig_mu;
-        varFigs(36).varname = 'diverticularDisease';
-        varFigs(36).rawvar = 'mu_raw';
-        varFigs(36).type = 'discrete';
-        varFigs(37).fig = loopingFig_mu;
-        varFigs(37).varname = 'looping';
-        varFigs(37).rawvar = 'mu_raw';
-        varFigs(37).type = 'discrete';
-        varFigs(38).fig = discomfortFig_mu;
-        varFigs(38).varname = 'discomfort';
-        varFigs(38).rawvar = 'mu_raw';
-        varFigs(38).type = 'discrete';
-        varFigs(39).fig = hiatusFig_mu;
-        varFigs(39).varname = 'hiatusHernia';
-        varFigs(39).rawvar = 'mu_raw';
-        varFigs(39).type = 'discrete';
-        varFigs(40).fig = suctioningFig_mu;
-        varFigs(40).varname = 'suctioning';
-        varFigs(40).rawvar = 'mu_raw';
-        varFigs(40).type = 'discrete';
-        varFigs(41).fig = ageFig_mu;
-        varFigs(41).varname = 'age';
-        varFigs(41).rawvar = 'mu_raw';
-        varFigs(41).type = 'continuous';
-        varFigs(42).fig = bmiFig_mu;
-        varFigs(42).varname = 'bmi';
-        varFigs(42).rawvar = 'mu_raw';
-        varFigs(42).type = 'continuous';
-        
-        %repeat for size spread
-        varFigs(43).fig = sedationFig_sig;
-        varFigs(43).varname = 'sedation';
-        varFigs(43).rawvar = 'sig_raw';
-        varFigs(43).type = 'discrete';
-        varFigs(44).fig = analToneFig_sig;
-        varFigs(44).varname = 'analTone';
-        varFigs(44).rawvar = 'sig_raw';
-        varFigs(44).type = 'discrete';
-        varFigs(45).fig = co2vWaterFig_sig;
-        varFigs(45).varname = 'useOfCO2OrWater';
-        varFigs(45).rawvar = 'sig_raw';
-        varFigs(45).type = 'discrete';
-        varFigs(46).fig = smokerFig_sig;
-        varFigs(46).varname = 'isSmoker';
-        varFigs(46).rawvar = 'sig_raw';
-        varFigs(46).type = 'discrete';
-        varFigs(47).fig = maskFig_sig;
-        varFigs(47).varname = 'usesPatientMask';
-        varFigs(47).rawvar = 'sig_raw';
-        varFigs(47).type = 'discrete';
-        varFigs(48).fig = roomTypeFig_sig;
-        varFigs(48).varname = 'roomType';
-        varFigs(48).rawvar = 'sig_raw';
-        varFigs(48).type = 'discrete';
-        varFigs(49).fig = ugiRouteFig_sig;
-        varFigs(49).varname = 'ugiRoute';
-        varFigs(49).rawvar = 'sig_raw';
-        varFigs(49).type = 'discrete';
-        varFigs(50).fig = divertDiseaseFig_sig;
-        varFigs(50).varname = 'diverticularDisease';
-        varFigs(50).rawvar = 'sig_raw';
-        varFigs(50).type = 'discrete';
-        varFigs(51).fig = loopingFig_sig;
-        varFigs(51).varname = 'looping';
-        varFigs(51).rawvar = 'sig_raw';
-        varFigs(51).type = 'discrete';
-        varFigs(52).fig = discomfortFig_sig;
-        varFigs(52).varname = 'discomfort';
-        varFigs(52).rawvar = 'sig_raw';
-        varFigs(52).type = 'discrete';
-        varFigs(53).fig = hiatusFig_sig;
-        varFigs(53).varname = 'hiatusHernia';
-        varFigs(53).rawvar = 'sig_raw';
-        varFigs(53).type = 'discrete';
-        varFigs(54).fig = suctioningFig_sig;
-        varFigs(54).varname = 'suctioning';
-        varFigs(54).rawvar = 'sig_raw';
-        varFigs(54).type = 'discrete';
-        varFigs(55).fig = ageFig_sig;
-        varFigs(55).varname = 'age';
-        varFigs(55).rawvar = 'sig_raw';
-        varFigs(55).type = 'continuous';
-        varFigs(56).fig = bmiFig_sig;
-        varFigs(56).varname = 'bmi';
-        varFigs(56).rawvar = 'sig_raw';
-        varFigs(56).type = 'continuous';
-        
-        % Sex - variable I forgot!
-        varFigs(57).fig = sexFig_n;
-        varFigs(57).varname = 'sex';
-        varFigs(57).rawvar = 'n_raw';
-        varFigs(57).type = 'discrete';
-        
-        varFigs(58).fig = sexFig_v;
-        varFigs(58).varname = 'sex_v';
-        varFigs(58).rawvar = 'v_raw';
-        varFigs(58).type = 'discrete';
-        
-        varFigs(59).fig = sexFig_mu;
-        varFigs(59).varname = 'sex';
-        varFigs(59).rawvar = 'mu_raw';
-        varFigs(59).type = 'discrete';
-        
-        varFigs(60).fig = sexFig_sig;
-        varFigs(60).varname = 'sex';
-        varFigs(60).rawvar = 'sig_raw';
-        varFigs(60).type = 'discrete';
-    end
     
-    for k=1:size(varFigs,2)
-        figure(varFigs(k).fig);
-        clf;
-        eval(['temp = resultsTable.', varFigs(k).varname, '(fileIdx);']);
-        temp = temp{1};
-        temp_n = eval(['resultsTable.', varFigs(k).rawvar, '(fileIdx)']);
-        temp_n = temp_n{1};
-        if strcmpi(varFigs(k).type, 'discrete')
-            %boxplot(temp_n, temp);
-            violinplot(temp_n, temp);
-            tempCats = unique(temp);
-            nCats = size(tempCats,1);
-            for catIdx = 1:nCats
-                currentNevent = nnz(temp == tempCats(catIdx));
-                currentVals = temp_n(temp == tempCats(catIdx));
-                if strcmpi(varFigs(k).rawvar, 'n_raw') || strcmpi(varFigs(k).rawvar, 'mu_raw') || strcmpi(varFigs(k).rawvar, 'sig_raw')
-                	temp_p_no = resultsTable.patientNos(fileIdx);
-                elseif strcmpi(varFigs(k).rawvar, 'v_raw')
-                	temp_p_no = resultsTable.patientNos_v(fileIdx);
+    if analyseVariables %% Now plot variables
+        if (fileIdx == 1)
+            sedationFig_n = figure;
+            sexFig_n = figure;
+            analToneFig_n = figure;
+            co2vWaterFig_n = figure;
+            smokerFig_n = figure;
+            maskFig_n = figure;
+            roomTypeFig_n = figure;
+            ugiRouteFig_n = figure;
+            divertDiseaseFig_n = figure;
+            loopingFig_n = figure;
+            discomfortFig_n = figure;
+            hiatusFig_n = figure;
+            suctioningFig_n = figure;
+            procedureTypeFig_n = figure;
+            ageFig_n = figure;
+            bmiFig_n = figure;
+
+            sedationFig_v = figure;
+            sexFig_v = figure;
+            analToneFig_v = figure;
+            co2vWaterFig_v = figure;
+            smokerFig_v = figure;
+            maskFig_v = figure;
+            roomTypeFig_v = figure;
+            ugiRouteFig_v = figure;
+            divertDiseaseFig_v = figure;
+            loopingFig_v = figure;
+            discomfortFig_v = figure;
+            hiatusFig_v = figure;
+            suctioningFig_v = figure;
+            procedureTypeFig_v = figure;
+            ageFig_v = figure;
+            bmiFig_v = figure;
+
+            sedationFig_mu = figure;
+            sexFig_mu = figure;
+            analToneFig_mu = figure;
+            co2vWaterFig_mu = figure;
+            smokerFig_mu = figure;
+            maskFig_mu = figure;
+            roomTypeFig_mu = figure;
+            ugiRouteFig_mu = figure;
+            divertDiseaseFig_mu = figure;
+            loopingFig_mu = figure;
+            discomfortFig_mu = figure;
+            hiatusFig_mu = figure;
+            suctioningFig_mu = figure;
+            procedureTypeFig_mu = figure;
+            ageFig_mu = figure;
+            bmiFig_mu = figure;
+
+            sedationFig_sig = figure;
+            sexFig_sig = figure;
+            analToneFig_sig = figure;
+            co2vWaterFig_sig = figure;
+            smokerFig_sig = figure;
+            maskFig_sig = figure;
+            roomTypeFig_sig = figure;
+            ugiRouteFig_sig = figure;
+            divertDiseaseFig_sig = figure;
+            loopingFig_sig = figure;
+            discomfortFig_sig = figure;
+            hiatusFig_sig = figure;
+            suctioningFig_sig = figure;
+            procedureTypeFig_sig = figure;
+            ageFig_sig = figure;
+            bmiFig_sig = figure;
+
+            varFigs(1).fig = sedationFig_n;
+            varFigs(1).varname = 'sedation';
+            varFigs(1).rawvar = 'n_raw';
+            varFigs(1).type = 'discrete';
+            varFigs(2).fig = analToneFig_n;
+            varFigs(2).varname = 'analTone';
+            varFigs(2).rawvar = 'n_raw';
+            varFigs(2).type = 'discrete';
+            varFigs(3).fig = co2vWaterFig_n;
+            varFigs(3).varname = 'useOfCO2OrWater';
+            varFigs(3).rawvar = 'n_raw';
+            varFigs(3).type = 'discrete';
+            varFigs(4).fig = smokerFig_n;
+            varFigs(4).varname = 'isSmoker';
+            varFigs(4).rawvar = 'n_raw';
+            varFigs(4).type = 'discrete';
+            varFigs(5).fig = maskFig_n;
+            varFigs(5).varname = 'usesPatientMask';
+            varFigs(5).rawvar = 'n_raw';
+            varFigs(5).type = 'discrete';
+            varFigs(6).fig = roomTypeFig_n;
+            varFigs(6).varname = 'roomType';
+            varFigs(6).rawvar = 'n_raw';
+            varFigs(6).type = 'discrete';
+            varFigs(7).fig = ugiRouteFig_n;
+            varFigs(7).varname = 'ugiRoute';
+            varFigs(7).type = 'discrete';
+            varFigs(7).rawvar = 'n_raw';
+            varFigs(8).fig = divertDiseaseFig_n;
+            varFigs(8).varname = 'diverticularDisease';
+            varFigs(8).rawvar = 'n_raw';
+            varFigs(8).type = 'discrete';
+            varFigs(9).fig = loopingFig_n;
+            varFigs(9).varname = 'looping';
+            varFigs(9).rawvar = 'n_raw';
+            varFigs(9).type = 'discrete';
+            varFigs(10).fig = discomfortFig_n;
+            varFigs(10).varname = 'discomfort';
+            varFigs(10).rawvar = 'n_raw';
+            varFigs(10).type = 'discrete';
+            varFigs(11).fig = hiatusFig_n;
+            varFigs(11).varname = 'hiatusHernia';
+            varFigs(11).rawvar = 'n_raw';
+            varFigs(11).type = 'discrete';
+            varFigs(12).fig = suctioningFig_n;
+            varFigs(12).varname = 'suctioning';
+            varFigs(12).rawvar = 'n_raw';
+            varFigs(12).type = 'discrete';
+            varFigs(13).fig = ageFig_n;
+            varFigs(13).varname = 'age';
+            varFigs(13).rawvar = 'n_raw';
+            varFigs(13).type = 'continuous';
+            varFigs(14).fig = bmiFig_n;
+            varFigs(14).varname = 'bmi';
+            varFigs(14).rawvar = 'n_raw';
+            varFigs(14).type = 'continuous';
+
+            %repeat for volume
+            varFigs(15).fig = sedationFig_v;
+            varFigs(15).varname = 'sedation_v';
+            varFigs(15).rawvar = 'v_raw';
+            varFigs(15).type = 'discrete';
+            varFigs(16).fig = analToneFig_v;
+            varFigs(16).varname = 'analTone_v';
+            varFigs(16).rawvar = 'v_raw';
+            varFigs(16).type = 'discrete';
+            varFigs(17).fig = co2vWaterFig_v;
+            varFigs(17).varname = 'useOfCO2OrWater_v';
+            varFigs(17).rawvar = 'v_raw';
+            varFigs(17).type = 'discrete';
+            varFigs(18).fig = smokerFig_v;
+            varFigs(18).varname = 'isSmoker_v';
+            varFigs(18).rawvar = 'v_raw';
+            varFigs(18).type = 'discrete';
+            varFigs(19).fig = maskFig_v;
+            varFigs(19).varname = 'usesPatientMask_v';
+            varFigs(19).rawvar = 'v_raw';
+            varFigs(19).type = 'discrete';
+            varFigs(20).fig = roomTypeFig_v;
+            varFigs(20).varname = 'roomType_v';
+            varFigs(20).rawvar = 'v_raw';
+            varFigs(20).type = 'discrete';
+            varFigs(21).fig = ugiRouteFig_v;
+            varFigs(21).varname = 'ugiRoute_v';
+            varFigs(21).rawvar = 'v_raw';
+            varFigs(21).type = 'discrete';
+            varFigs(22).fig = divertDiseaseFig_v;
+            varFigs(22).varname = 'diverticularDisease_v';
+            varFigs(22).rawvar = 'v_raw';
+            varFigs(22).type = 'discrete';
+            varFigs(23).fig = loopingFig_v;
+            varFigs(23).varname = 'looping_v';
+            varFigs(23).rawvar = 'v_raw';
+            varFigs(23).type = 'discrete';
+            varFigs(24).fig = discomfortFig_v;
+            varFigs(24).varname = 'discomfort_v';
+            varFigs(24).rawvar = 'v_raw';
+            varFigs(24).type = 'discrete';
+            varFigs(25).fig = hiatusFig_v;
+            varFigs(25).varname = 'hiatusHernia_v';
+            varFigs(25).rawvar = 'v_raw';
+            varFigs(25).type = 'discrete';
+            varFigs(26).fig = suctioningFig_v;
+            varFigs(26).varname = 'suctioning_v';
+            varFigs(26).rawvar = 'v_raw';
+            varFigs(26).type = 'discrete';
+            varFigs(27).fig = ageFig_v;
+            varFigs(27).varname = 'age_v';
+            varFigs(27).rawvar = 'v_raw';
+            varFigs(27).type = 'continuous';
+            varFigs(28).fig = bmiFig_v;
+            varFigs(28).varname = 'bmi_v';
+            varFigs(28).rawvar = 'v_raw';
+            varFigs(28).type = 'continuous';
+
+            %repeat for size
+            varFigs(29).fig = sedationFig_mu;
+            varFigs(29).varname = 'sedation';
+            varFigs(29).rawvar = 'mu_raw';
+            varFigs(29).type = 'discrete';
+            varFigs(30).fig = analToneFig_mu;
+            varFigs(30).varname = 'analTone';
+            varFigs(30).rawvar = 'mu_raw';
+            varFigs(30).type = 'discrete';
+            varFigs(31).fig = co2vWaterFig_mu;
+            varFigs(31).varname = 'useOfCO2OrWater';
+            varFigs(31).rawvar = 'mu_raw';
+            varFigs(31).type = 'discrete';
+            varFigs(32).fig = smokerFig_mu;
+            varFigs(32).varname = 'isSmoker';
+            varFigs(32).rawvar = 'mu_raw';
+            varFigs(32).type = 'discrete';
+            varFigs(33).fig = maskFig_mu;
+            varFigs(33).varname = 'usesPatientMask';
+            varFigs(33).rawvar = 'mu_raw';
+            varFigs(33).type = 'discrete';
+            varFigs(34).fig = roomTypeFig_mu;
+            varFigs(34).varname = 'roomType';
+            varFigs(34).rawvar = 'mu_raw';
+            varFigs(34).type = 'discrete';
+            varFigs(35).fig = ugiRouteFig_mu;
+            varFigs(35).varname = 'ugiRoute';
+            varFigs(35).rawvar = 'mu_raw';
+            varFigs(35).type = 'discrete';
+            varFigs(36).fig = divertDiseaseFig_mu;
+            varFigs(36).varname = 'diverticularDisease';
+            varFigs(36).rawvar = 'mu_raw';
+            varFigs(36).type = 'discrete';
+            varFigs(37).fig = loopingFig_mu;
+            varFigs(37).varname = 'looping';
+            varFigs(37).rawvar = 'mu_raw';
+            varFigs(37).type = 'discrete';
+            varFigs(38).fig = discomfortFig_mu;
+            varFigs(38).varname = 'discomfort';
+            varFigs(38).rawvar = 'mu_raw';
+            varFigs(38).type = 'discrete';
+            varFigs(39).fig = hiatusFig_mu;
+            varFigs(39).varname = 'hiatusHernia';
+            varFigs(39).rawvar = 'mu_raw';
+            varFigs(39).type = 'discrete';
+            varFigs(40).fig = suctioningFig_mu;
+            varFigs(40).varname = 'suctioning';
+            varFigs(40).rawvar = 'mu_raw';
+            varFigs(40).type = 'discrete';
+            varFigs(41).fig = ageFig_mu;
+            varFigs(41).varname = 'age';
+            varFigs(41).rawvar = 'mu_raw';
+            varFigs(41).type = 'continuous';
+            varFigs(42).fig = bmiFig_mu;
+            varFigs(42).varname = 'bmi';
+            varFigs(42).rawvar = 'mu_raw';
+            varFigs(42).type = 'continuous';
+
+            %repeat for size spread
+            varFigs(43).fig = sedationFig_sig;
+            varFigs(43).varname = 'sedation';
+            varFigs(43).rawvar = 'sig_raw';
+            varFigs(43).type = 'discrete';
+            varFigs(44).fig = analToneFig_sig;
+            varFigs(44).varname = 'analTone';
+            varFigs(44).rawvar = 'sig_raw';
+            varFigs(44).type = 'discrete';
+            varFigs(45).fig = co2vWaterFig_sig;
+            varFigs(45).varname = 'useOfCO2OrWater';
+            varFigs(45).rawvar = 'sig_raw';
+            varFigs(45).type = 'discrete';
+            varFigs(46).fig = smokerFig_sig;
+            varFigs(46).varname = 'isSmoker';
+            varFigs(46).rawvar = 'sig_raw';
+            varFigs(46).type = 'discrete';
+            varFigs(47).fig = maskFig_sig;
+            varFigs(47).varname = 'usesPatientMask';
+            varFigs(47).rawvar = 'sig_raw';
+            varFigs(47).type = 'discrete';
+            varFigs(48).fig = roomTypeFig_sig;
+            varFigs(48).varname = 'roomType';
+            varFigs(48).rawvar = 'sig_raw';
+            varFigs(48).type = 'discrete';
+            varFigs(49).fig = ugiRouteFig_sig;
+            varFigs(49).varname = 'ugiRoute';
+            varFigs(49).rawvar = 'sig_raw';
+            varFigs(49).type = 'discrete';
+            varFigs(50).fig = divertDiseaseFig_sig;
+            varFigs(50).varname = 'diverticularDisease';
+            varFigs(50).rawvar = 'sig_raw';
+            varFigs(50).type = 'discrete';
+            varFigs(51).fig = loopingFig_sig;
+            varFigs(51).varname = 'looping';
+            varFigs(51).rawvar = 'sig_raw';
+            varFigs(51).type = 'discrete';
+            varFigs(52).fig = discomfortFig_sig;
+            varFigs(52).varname = 'discomfort';
+            varFigs(52).rawvar = 'sig_raw';
+            varFigs(52).type = 'discrete';
+            varFigs(53).fig = hiatusFig_sig;
+            varFigs(53).varname = 'hiatusHernia';
+            varFigs(53).rawvar = 'sig_raw';
+            varFigs(53).type = 'discrete';
+            varFigs(54).fig = suctioningFig_sig;
+            varFigs(54).varname = 'suctioning';
+            varFigs(54).rawvar = 'sig_raw';
+            varFigs(54).type = 'discrete';
+            varFigs(55).fig = ageFig_sig;
+            varFigs(55).varname = 'age';
+            varFigs(55).rawvar = 'sig_raw';
+            varFigs(55).type = 'continuous';
+            varFigs(56).fig = bmiFig_sig;
+            varFigs(56).varname = 'bmi';
+            varFigs(56).rawvar = 'sig_raw';
+            varFigs(56).type = 'continuous';
+
+            % Sex - variable I forgot!
+            varFigs(57).fig = sexFig_n;
+            varFigs(57).varname = 'sex';
+            varFigs(57).rawvar = 'n_raw';
+            varFigs(57).type = 'discrete';
+
+            varFigs(58).fig = sexFig_v;
+            varFigs(58).varname = 'sex_v';
+            varFigs(58).rawvar = 'v_raw';
+            varFigs(58).type = 'discrete';
+
+            varFigs(59).fig = sexFig_mu;
+            varFigs(59).varname = 'sex';
+            varFigs(59).rawvar = 'mu_raw';
+            varFigs(59).type = 'discrete';
+
+            varFigs(60).fig = sexFig_sig;
+            varFigs(60).varname = 'sex';
+            varFigs(60).rawvar = 'sig_raw';
+            varFigs(60).type = 'discrete';
+            
+            %Procedure type - variable I forgot!
+            varFigs(61).fig = procedureTypeFig_n;
+            varFigs(61).varname = 'procedureType';
+            varFigs(61).rawvar = 'n_raw';
+            varFigs(61).type = 'discrete';
+
+            varFigs(62).fig = procedureTypeFig_v;
+            varFigs(62).varname = 'procedureType_v';
+            varFigs(62).rawvar = 'v_raw';
+            varFigs(62).type = 'discrete';
+
+            varFigs(63).fig = procedureTypeFig_mu;
+            varFigs(63).varname = 'procedureType';
+            varFigs(63).rawvar = 'mu_raw';
+            varFigs(63).type = 'discrete';
+
+            varFigs(64).fig = procedureTypeFig_sig;
+            varFigs(64).varname = 'procedureType';
+            varFigs(64).rawvar = 'sig_raw';
+            varFigs(64).type = 'discrete';
+        end
+
+        for k=1:size(varFigs,2)
+            figure(varFigs(k).fig);
+            clf;
+            eval(['temp = resultsTable.', varFigs(k).varname, '(fileIdx);']);
+            temp = temp{1};
+            temp_n = eval(['resultsTable.', varFigs(k).rawvar, '(fileIdx)']);
+            temp_n = temp_n{1};
+            if strcmpi(varFigs(k).type, 'discrete')
+                %boxplot(temp_n, temp);
+                violinplot(temp_n, temp);
+                tempCats = unique(temp);
+                nCats = size(tempCats,1);
+                for catIdx = 1:nCats
+                    currentNevent = nnz(temp == tempCats(catIdx));
+                    currentVals = temp_n(temp == tempCats(catIdx));
+                    if strcmpi(varFigs(k).rawvar, 'n_raw') || strcmpi(varFigs(k).rawvar, 'mu_raw') || strcmpi(varFigs(k).rawvar, 'sig_raw')
+                        temp_p_no = resultsTable.patientNos(fileIdx);
+                    elseif strcmpi(varFigs(k).rawvar, 'v_raw')
+                        temp_p_no = resultsTable.patientNos_v(fileIdx);
+                    end
+                    temp_p_no = temp_p_no{1};
+                    currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
+                    ht = text(catIdx,max(currentVals)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
+                    set(ht, 'Rotation', 60);
                 end
-                temp_p_no = temp_p_no{1};
-                currentNpatient = nnz(unique(temp_p_no(temp == tempCats(catIdx))));
-                ht = text(catIdx,max(currentVals)*1.05,['N_{pat} = ', num2str(currentNpatient), ', N_{ev} = ', num2str(currentNevent)]);
-                set(ht, 'Rotation', 60);
-            end
-            if nCats > 1
-                for cat1Idx = 1:nCats-1
-                     for cat2Idx = cat1Idx+1:nCats                 
+                if nCats > 1
+                    for cat1Idx = 1:nCats-1
+                         for cat2Idx = cat1Idx+1:nCats                 
                          val1 = temp == tempCats(cat1Idx);
                          val2 = temp == tempCats(cat2Idx);
 
                          d1 = temp_n(val1);
                          d2 = temp_n(val2);
 
-                         if fileIdx > 2 % && strcmpi(varFigs(k).varname, 'sex')
-                            if strcmpi(varFigs(k).rawvar, 'n_raw')
-                                computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx, 'pThresh', 0.5);
-                            elseif strcmpi(varFigs(k).rawvar, 'v_raw')
-                                computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx, 'pThresh', 0.5, 'muMinIn', -34);
-                            elseif strcmpi(varFigs(k).rawvar, 'mu_raw')
-                                [~, pValMu] = ttest2(d1,d2);
-                                computeAndPlotPvals(d1,d1,[],[],cat1Idx, cat2Idx,'pMeanIn', pValMu, 'pSigIn', pValMu);
-                            elseif strcmpi(varFigs(k).rawvar, 'sig_raw')
-                                [~, pValSig] = kstest2(d1,d2);
-                                computeAndPlotPvals(d1,d1,[],[],cat1Idx, cat2Idx,'pMeanIn', pValSig, 'pSigIn', pValSig);
+                         if fileIdx > 2 && strcmpi(varFigs(k).varname, 'procedureType') %% So that it only does cytosponge
+                            if computeVarPvals
+                                if strcmpi(varFigs(k).rawvar, 'n_raw')
+                                    if LFonly
+                                        [~, pValMu] = ttest2(log(d1),log(d2));
+                                        computeAndPlotPvals(d1,d1,[],[],cat1Idx, cat2Idx,'pMeanIn', pValMu, 'pSigIn', pValMu);
+                                    else
+                                        computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx, 'pThresh', 0.5);
+                                    end
+                                elseif strcmpi(varFigs(k).rawvar, 'v_raw')
+                                    %computeAndPlotPvals(d1,d2,noiseMean,noiseStd,cat1Idx,cat2Idx, 'pThresh', 0.5, 'muMinIn', -34);
+                                elseif strcmpi(varFigs(k).rawvar, 'mu_raw')
+                                    [~, pValMu] = ttest2(d1,d2);
+                                    computeAndPlotPvals(d1,d1,[],[],cat1Idx, cat2Idx,'pMeanIn', pValMu, 'pSigIn', pValMu, 'pThresh', 0.5);
+                                elseif strcmpi(varFigs(k).rawvar, 'sig_raw')
+                                    [~, pValSig] = kstest2(d1,d2);
+                                    computeAndPlotPvals(d1,d1,[],[],cat1Idx, cat2Idx,'pMeanIn', pValSig, 'pSigIn', pValSig);
+                                end
                             end
                          end
                      end
@@ -2475,6 +2613,8 @@ for fileIdx = 1:nFiles
             saveas(gcf,fullfile(folder,[saveFigName, '.fig']));
             saveas(gcf,fullfile(folder,[saveFigName, '.png']));
         end
+    end
+    
     end
 
     %% Save results table
